@@ -8,11 +8,10 @@ import type { Page } from "@/lib/core/types";
 import { Editor } from "@/components/editor/editor";
 import { Menu, MenuItem, MenuSeparator } from "@/components/primitives";
 import { Button, EmptyState } from "@/components/primitives";
+import { EmojiPicker } from "@/components/emoji-picker";
 import {
   IconCheck, IconCopy, IconMore, IconPlus, IconStar, IconStarFilled, IconTrash,
 } from "@/components/icons";
-
-const QUICK_ICONS = ["📝", "📌", "✅", "💡", "🚀", "🗂️", "📅", "🎯", "⭐", "🔒", "📎", "🎨"];
 
 function PageHeader({ page }: { page: Page }) {
   const {
@@ -21,11 +20,10 @@ function PageHeader({ page }: { page: Page }) {
   } = useApp();
 
   const [title, setTitle] = useState(page.title);
-  const [iconValue, setIconValue] = useState("");
+  const [iconPicker, setIconPicker] = useState(false);
   const savedRef = useRef(page.title);
 
   useEffect(() => { setTitle(page.title); }, [page.title]);
-  useEffect(() => { setIconValue(page.icon); }, [page.icon]);
 
   const commitTitle = () => {
     const v = title.trim();
@@ -60,59 +58,23 @@ function PageHeader({ page }: { page: Page }) {
   return (
     <div className="mb-4">
       <div className="flex items-start gap-3">
-        <Menu
-          width={220}
-          align="start"
-          trigger={(open) => (
-            <button
-              type="button"
-              aria-label="Set page icon"
-              title="Set icon"
-              className={`w-11 h-11 shrink-0 flex items-center justify-center rounded-[8px] border text-[22px] transition-colors ${
-                open ? "border-accent bg-accent-soft" : "border-line bg-surface hover:border-line-strong"
-              }`}
-            >
-              {page.icon ? <span>{page.icon}</span> : <IconPlus size={16} className="text-ink-3" />}
-            </button>
-          )}
+        <button
+          type="button"
+          aria-label="Set page icon"
+          title="Set icon"
+          onClick={() => setIconPicker(true)}
+          className={`w-11 h-11 shrink-0 flex items-center justify-center rounded-[8px] border text-[22px] transition-colors ${
+            iconPicker ? "border-accent bg-accent-soft" : "border-line bg-surface hover:border-line-strong"
+          }`}
         >
-          {(close) => (
-            <>
-              <div className="px-2.5 pt-2 pb-1.5">
-                <div className="eyebrow mb-1.5">Page icon</div>
-                <div className="flex flex-wrap gap-1">
-                  {QUICK_ICONS.map((ic) => (
-                    <button
-                      key={ic}
-                      type="button"
-                      className={`w-7 h-7 rounded-[6px] text-[15px] flex items-center justify-center ${
-                        page.icon === ic ? "bg-accent-soft ring-1 ring-inset ring-accent/40" : "hover:bg-surface-2"
-                      }`}
-                      onClick={() => { void setPageIcon(page.id, ic); close(); }}
-                    >
-                      {ic}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  value={iconValue}
-                  onChange={(e) => setIconValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { void setPageIcon(page.id, iconValue.trim()); close(); }
-                    if (e.key === "Escape") close();
-                  }}
-                  placeholder="Or paste any emoji…"
-                  className="text-input mt-2 h-8 text-[12.5px]"
-                  aria-label="Custom icon emoji"
-                />
-              </div>
-              <MenuSeparator />
-              <MenuItem leading={<IconTrash size={13} />} onClick={() => { void setPageIcon(page.id, ""); close(); }}>
-                Remove icon
-              </MenuItem>
-            </>
-          )}
-        </Menu>
+          {page.icon ? <span>{page.icon}</span> : <IconPlus size={16} className="text-ink-3" />}
+        </button>
+        {iconPicker && (
+          <EmojiPicker
+            onPick={(char) => void setPageIcon(page.id, char)}
+            onClose={() => setIconPicker(false)}
+          />
+        )}
 
         <div className="flex-1 min-w-0">
           <input
@@ -150,6 +112,11 @@ function PageHeader({ page }: { page: Page }) {
               >
                 {page.favorite ? "Unfavorite" : "Favorite"}
               </MenuItem>
+              {page.icon && (
+                <MenuItem leading={<IconTrash size={13} />} onClick={() => { void setPageIcon(page.id, ""); close(); }}>
+                  Remove icon
+                </MenuItem>
+              )}
               <MenuItem leading={<IconCopy size={13} />} onClick={() => { copyLink(); close(); }}>
                 Copy link
               </MenuItem>

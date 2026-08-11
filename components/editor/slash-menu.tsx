@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { BlockType } from "@/lib/core/types";
 import {
   IconChecklist, IconCode, IconFileText, IconImage, IconList,
-  IconListNumbered, IconMinus, IconPage, IconQuote, IconTable,
+  IconListNumbered, IconMath, IconMinus, IconPage, IconQuote, IconTable,
 } from "@/components/icons";
 
 export interface SlashItem {
@@ -24,6 +24,7 @@ export const SLASH_ITEMS: SlashItem[] = [
   { type: "numberedList", label: "Numbered list", hint: "Ordered list", icon: <IconListNumbered size={15} /> },
   { type: "quote", label: "Quote", hint: "A pull quote", icon: <IconQuote size={15} /> },
   { type: "code", label: "Code", hint: "Monospace block", icon: <IconCode size={15} /> },
+  { type: "math", label: "Math", hint: "LaTeX equation", icon: <IconMath size={15} /> },
   { type: "divider", label: "Divider", hint: "A horizontal rule", icon: <IconMinus size={15} /> },
   { type: "image", label: "Image", hint: "An image from your files", icon: <IconImage size={15} /> },
   { type: "file", label: "File", hint: "Attach a file", icon: <IconFileText size={15} /> },
@@ -38,6 +39,7 @@ const KEYWORDS: Record<string, string> = {
   "/numbered": "numbered ol order list ordered",
   "/quote": "quote blockquote pull",
   "/code": "code block monospace pre",
+  "/math": "math latex equation formula",
   "/divider": "divider hr line rule separator",
   "/image": "image img picture",
   "/file": "file attach attachment document",

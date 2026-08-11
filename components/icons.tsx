@@ -188,6 +188,30 @@ export const IconFolder = (p: IconProps) => (
   <Base {...p}><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2h9A1.5 1.5 0 0 1 21 9.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-10Z" /></Base>
 );
 
+export const IconFolderOpen = (p: IconProps) => (
+  <Base {...p}><path d="M3.5 9.5V7A1.5 1.5 0 0 1 5 5.5h4l2 2h6A1.5 1.5 0 0 1 18.5 9" /><path d="M4 9.5h16l-1.6 8.2a1.5 1.5 0 0 1-1.47 1.3H4.5a1.5 1.5 0 0 1-1.5-1.6L4 9.5Z" /></Base>
+);
+
+export const IconFolderPlus = (p: IconProps) => (
+  <Base {...p}><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2h9A1.5 1.5 0 0 1 21 9.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-10Z" /><path d="M12 11.5v5M9.5 14h5" /></Base>
+);
+
+export const IconArrowUp = (p: IconProps) => (
+  <Base {...p}><path d="M12 20V5m0 0L6.5 10.5M12 5l5.5 5.5" /></Base>
+);
+
+export const IconMath = (p: IconProps) => (
+  <Base {...p}><path d="M4.5 6.5h15M5 6.5c1.4 4.3 3 8.6 4.2 13h2.6c1.2-4.4 2.8-8.7 4.2-13" /></Base>
+);
+
+export const IconHighlighter = (p: IconProps) => (
+  <Base {...p}><path d="m9.5 14 7.6-7.6a1.6 1.6 0 0 1 2.3 2.3L11.8 16.3" /><path d="m9.5 14-2 4-4 2 2.5-4" /><path d="m7.5 18 5-5" /></Base>
+);
+
+export const IconEmoji = (p: IconProps) => (
+  <Base {...p}><circle cx="12" cy="12" r="8.5" /><path d="M8.5 14.5c1 1.2 2.2 1.8 3.5 1.8s2.5-.6 3.5-1.8" /><path d="M9 9.5h.01M15 9.5h.01" /></Base>
+);
+
 export const IconExternal = (p: IconProps) => (
   <Base {...p}><path d="M14 5h5v5M19 5l-8 8" /><path d="M19 14v4.5a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-13a.5.5 0 0 1 .5-.5H10" /></Base>
 );

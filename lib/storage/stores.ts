@@ -10,6 +10,7 @@ import type { StorageBackend } from "./backend";
 import type {
   Block,
   FileRef,
+  Folder,
   Page,
   Settings,
   Task,
@@ -22,6 +23,7 @@ const T_PAGES = "pages";
 const T_BLOCKS = "blocks";
 const T_TASKS = "tasks";
 const T_FILES = "files";
+const T_FOLDERS = "folders";
 const T_SETTINGS = "settings";
 
 const WORKSPACE_KEY = "main";
@@ -98,6 +100,9 @@ export class Repository {
   async saveFile(file: FileRef): Promise<void> {
     await this.backend.put(T_FILES, file.id, file);
   }
+  async saveFiles(files: FileRef[]): Promise<void> {
+    await this.backend.putAll(T_FILES, files.map((f) => [f.id, f]));
+  }
   async deleteFile(id: string): Promise<void> {
     await this.backend.delete(T_FILES, id);
   }
@@ -109,6 +114,20 @@ export class Repository {
   }
   async deleteFileBlob(blobKey: string): Promise<void> {
     await this.backend.deleteBlob(blobKey);
+  }
+
+  // ---- folderStore ----
+  async getFolders(): Promise<Folder[]> {
+    return this.backend.getAll<Folder>(T_FOLDERS);
+  }
+  async saveFolder(folder: Folder): Promise<void> {
+    await this.backend.put(T_FOLDERS, folder.id, folder);
+  }
+  async saveFolders(folders: Folder[]): Promise<void> {
+    await this.backend.putAll(T_FOLDERS, folders.map((f) => [f.id, f]));
+  }
+  async deleteFolder(id: string): Promise<void> {
+    await this.backend.delete(T_FOLDERS, id);
   }
 
   // ---- settingsStore ----
@@ -132,6 +151,7 @@ export class Repository {
       this.backend.clear(T_BLOCKS),
       this.backend.clear(T_TASKS),
       this.backend.clear(T_FILES),
+      this.backend.clear(T_FOLDERS),
       this.backend.clear(T_SETTINGS),
       this.backend.clear(T_WORKSPACE),
     ]);

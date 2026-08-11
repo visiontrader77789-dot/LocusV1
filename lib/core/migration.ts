@@ -4,11 +4,16 @@
  * through `migrate` so old on-disk data is upgraded in place.
  */
 import { SCHEMA_VERSION } from "./types";
-import type { Block, Page, Task, Workspace } from "./types";
+import type { Block, Folder, Page, Task, Workspace } from "./types";
 
 const MIGRATIONS: Array<(d: unknown) => unknown> = [
   // v0 -> v1: initial release schema. No-op placeholder that records intent.
   function toV1(d: unknown) {
+    return d;
+  },
+  // v1 -> v2: folders edition. Pages/files gained a folderId, blocks gained
+  // the "math" type, and marks gained highlight. All additive — no reshaping.
+  function toV2(d: unknown) {
     return d;
   },
 ];
@@ -30,9 +35,20 @@ export function migratePages(pages: Page[]): Page[] {
     ...p,
     favorite: Boolean(p.favorite),
     parentId: p.parentId ?? null,
+    folderId: typeof p.folderId === "string" && p.folderId ? p.folderId : null,
     icon: typeof p.icon === "string" ? p.icon : "",
     title: typeof p.title === "string" ? p.title : "",
     order: typeof p.order === "number" ? p.order : p.createdAt,
+  }));
+}
+
+export function migrateFolders(folders: Folder[]): Folder[] {
+  return folders.map((f) => ({
+    ...f,
+    parentId: f.parentId ?? null,
+    icon: typeof f.icon === "string" ? f.icon : "",
+    name: typeof f.name === "string" ? f.name : "New folder",
+    order: typeof f.order === "number" ? f.order : f.createdAt,
   }));
 }
 

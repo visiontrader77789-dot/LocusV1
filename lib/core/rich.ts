@@ -12,11 +12,29 @@
  * Platform note: `readBlock` touches the DOM and is browser-only; the rest
  * is platform-independent.
  */
-import type { Block, BlockType, InlineSpan, RichMark } from "./types";
+import katex from "katex";
+import type { Block, BlockType, HighlightColor, InlineSpan, RichMark } from "./types";
 
 export type { InlineSpan, RichMark };
 
 const WIKI_LINK_RE = /\[\[([^\[\]]{1,120})\]\]/g;
+const MATH_INLINE_RE = /\$([^$\n]{1,240})\$/g;
+
+const HIGHLIGHT_COLORS = new Set<HighlightColor>(["yellow", "green", "pink", "blue"]);
+
+/**
+ * Render LaTeX to HTML using local KaTeX. Never throws on bad input —
+ * `throwOnError: false` renders the source as error text instead.
+ */
+export function renderMath(latex: string, displayMode = false): string {
+  const src = latex || "";
+  if (!src.trim()) return "";
+  try {
+    return katex.renderToString(src, { displayMode, throwOnError: false, output: "html" });
+  } catch {
+    return escapeHtml(src);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // HTML escaping
@@ -45,13 +63,14 @@ function marksEqual(a: RichMark, b: RichMark): boolean {
     Boolean(a.underline) === Boolean(b.underline) &&
     Boolean(a.strike) === Boolean(b.strike) &&
     Boolean(a.code) === Boolean(b.code) &&
+    (a.highlight ?? "") === (b.highlight ?? "") &&
     (a.link ?? "") === (b.link ?? "")
   );
 }
 
 function hasMarks(m: RichMark): boolean {
   return Boolean(
-    m.bold || m.italic || m.underline || m.strike || m.code || m.link,
+    m.bold || m.italic || m.underline || m.strike || m.code || m.link || m.highlight,
   );
 }
 
@@ -69,6 +88,8 @@ export function normalizeSpans(spans: InlineSpan[], length: number): InlineSpan[
       strike: s.strike || undefined,
       code: s.code || undefined,
       link: s.link ? String(s.link).slice(0, 512) : undefined,
+      highlight:
+        s.highlight && HIGHLIGHT_COLORS.has(s.highlight) ? s.highlight : undefined,
     };
     if (to > from && hasMarks(mark)) cleaned.push({ from, to, ...mark });
   }
@@ -85,8 +106,8 @@ export function mergeSpans(spans: InlineSpan[]): InlineSpan[] {
       last &&
       sp.from <= last.to &&
       marksEqual(
-        { bold: last.bold, italic: last.italic, underline: last.underline, strike: last.strike, code: last.code, link: last.link },
-        { bold: sp.bold, italic: sp.italic, underline: sp.underline, strike: sp.strike, code: sp.code, link: sp.link },
+        { bold: last.bold, italic: last.italic, underline: last.underline, strike: last.strike, code: last.code, link: last.link, highlight: last.highlight },
+        { bold: sp.bold, italic: sp.italic, underline: sp.underline, strike: sp.strike, code: sp.code, link: sp.link, highlight: sp.highlight },
       )
     ) {
       last.to = Math.max(last.to, sp.to);
@@ -146,10 +167,16 @@ interface Seg {
   from: number;
   to: number;
   chip?: string;
+  math?: string;
   marks: RichMark;
 }
 
-function buildSegments(content: string, spans: InlineSpan[], chips: Array<{ from: number; to: number; title: string }>): Seg[] {
+function buildSegments(
+  content: string,
+  spans: InlineSpan[],
+  chips: Array<{ from: number; to: number; title: string }>,
+  mathRanges: Array<{ from: number; to: number; latex: string }>,
+): Seg[] {
   const len = content.length;
   const segs: Seg[] = [{ from: 0, to: len, marks: {} }];
   const splitAt = (pos: number) => {
@@ -157,7 +184,7 @@ function buildSegments(content: string, spans: InlineSpan[], chips: Array<{ from
     for (let i = 0; i < segs.length; i += 1) {
       const s = segs[i];
       if (pos > s.from && pos < s.to) {
-        segs.splice(i + 1, 0, { from: pos, to: s.to, marks: { ...s.marks }, chip: s.chip });
+        segs.splice(i + 1, 0, { from: pos, to: s.to, marks: { ...s.marks }, chip: s.chip, math: s.math });
         s.to = pos;
         return;
       }
@@ -166,6 +193,10 @@ function buildSegments(content: string, spans: InlineSpan[], chips: Array<{ from
   for (const c of chips) {
     splitAt(c.from);
     splitAt(c.to);
+  }
+  for (const m of mathRanges) {
+    splitAt(m.from);
+    splitAt(m.to);
   }
   for (const sp of spans) {
     splitAt(sp.from);
@@ -181,6 +212,7 @@ function buildSegments(content: string, spans: InlineSpan[], chips: Array<{ from
           strike: s.marks.strike || sp.strike,
           code: s.marks.code || sp.code,
           link: s.marks.link ?? sp.link,
+          highlight: s.marks.highlight ?? sp.highlight,
         };
       }
     }
@@ -188,6 +220,11 @@ function buildSegments(content: string, spans: InlineSpan[], chips: Array<{ from
   for (const c of chips) {
     for (const s of segs) {
       if (s.from >= c.from && s.to <= c.to) s.chip = c.title;
+    }
+  }
+  for (const m of mathRanges) {
+    for (const s of segs) {
+      if (s.from >= m.from && s.to <= m.to) s.math = m.latex;
     }
   }
   return segs.filter((s) => s.to > s.from);
@@ -206,6 +243,7 @@ function wrapSeg(text: string, marks: RichMark): string {
   if (marks.italic) out = `<i>${out}</i>`;
   if (marks.underline) out = `<u>${out}</u>`;
   if (marks.strike) out = `<s>${out}</s>`;
+  if (marks.highlight) out = `<mark class="hl-${marks.highlight}">${out}</mark>`;
   return out;
 }
 
@@ -217,6 +255,7 @@ function wrapSeg(text: string, marks: RichMark): string {
 export function richHtml(content: string, spans?: InlineSpan[] | null, chips = true): string {
   const normal = spans ? normalizeSpans(spans, content.length) : [];
   const chipRanges: Array<{ from: number; to: number; title: string }> = [];
+  const mathRanges: Array<{ from: number; to: number; latex: string }> = [];
   if (chips) {
     WIKI_LINK_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
@@ -226,17 +265,34 @@ export function richHtml(content: string, spans?: InlineSpan[] | null, chips = t
       const overlaps = normal.some((s) => s.from < to && s.to > from);
       if (!overlaps) chipRanges.push({ from, to, title: m[1].trim() });
     }
+    MATH_INLINE_RE.lastIndex = 0;
+    while ((m = MATH_INLINE_RE.exec(content)) !== null) {
+      const from = m.index;
+      const to = from + m[0].length;
+      const overlaps =
+        normal.some((s) => s.from < to && s.to > from) ||
+        chipRanges.some((c) => c.from < to && c.to > from);
+      if (!overlaps) mathRanges.push({ from, to, latex: m[1] });
+    }
   }
-  if (normal.length === 0 && chipRanges.length === 0) return escapeHtml(content);
-  const segs = buildSegments(content, normal, chipRanges);
-  return segs.map((s) => (s.chip ? `<span class="link-chip" data-link="${escapeAttr(s.chip)}">${escapeHtml(s.chip)}</span>` : wrapSeg(content.slice(s.from, s.to), s.marks))).join("");
+  if (normal.length === 0 && chipRanges.length === 0 && mathRanges.length === 0) {
+    return escapeHtml(content);
+  }
+  const segs = buildSegments(content, normal, chipRanges, mathRanges);
+  return segs
+    .map((s) => {
+      if (s.chip) return `<span class="link-chip" data-link="${escapeAttr(s.chip)}">${escapeHtml(s.chip)}</span>`;
+      if (s.math !== undefined) return `<span class="math-inline" data-math="${escapeAttr(s.math)}">${renderMath(s.math)}</span>`;
+      return wrapSeg(content.slice(s.from, s.to), s.marks);
+    })
+    .join("");
 }
 
 // ---------------------------------------------------------------------------
 // Reading a contentEditable block back into content + spans
 // ---------------------------------------------------------------------------
 
-type BoolMark = Exclude<keyof RichMark, "link">;
+type BoolMark = Exclude<keyof RichMark, "link" | "highlight">;
 
 const MARK_TAGS: Record<string, BoolMark> = {
   B: "bold",
@@ -256,7 +312,10 @@ function marksFromElement(el: Element, root: Element): RichMark {
   while (node && node !== root) {
     const tag = node.tagName;
     if (MARK_TAGS[tag]) marks[MARK_TAGS[tag]] = true;
-    else if (tag === "A") {
+    else if (tag === "MARK") {
+      const m = /hl-(yellow|green|pink|blue)/.exec(node.className || "");
+      if (m) marks.highlight = m[1] as HighlightColor;
+    } else if (tag === "A") {
       const link = node.getAttribute("data-link") || node.getAttribute("href") || "";
       if (link) marks.link = link;
     }

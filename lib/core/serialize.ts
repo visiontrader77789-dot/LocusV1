@@ -13,6 +13,7 @@ import type {
   Block,
   BlockType,
   FileRef,
+  Folder,
   InlineSpan,
   Page,
   Settings,
@@ -21,7 +22,7 @@ import type {
   LocusFileEntry,
 } from "./types";
 import { SCHEMA_VERSION } from "./types";
-import { migrateBlocks, migratePages, migrateTasks, migrateWorkspace } from "./migration";
+import { migrateBlocks, migrateFolders, migratePages, migrateTasks, migrateWorkspace } from "./migration";
 import { uid } from "./util";
 
 export const LOCUS_FORMAT = "locus";
@@ -39,6 +40,7 @@ export interface LocusArchive {
   blocks: Block[];
   tasks: Task[];
   files: LocusFileEntry[];
+  folders: Folder[];
 }
 
 export interface ExportInput {
@@ -48,6 +50,7 @@ export interface ExportInput {
   blocks: Block[];
   tasks: Task[];
   files: FileRef[];
+  folders: Folder[];
   /** Maps blobKey -> Blob for the files that should be inlined. */
   blobFor: (file: FileRef) => Promise<Blob | null>;
   /** Bytes beyond this size are stored as references only. */
@@ -105,6 +108,7 @@ export async function buildArchive(input: ExportInput): Promise<LocusArchive> {
     blocks: input.blocks,
     tasks: input.tasks,
     files,
+    folders: input.folders,
   };
 }
 
@@ -145,8 +149,10 @@ function idStr(v: unknown, fallback: () => string): string {
 const BLOCK_TYPES = new Set([
   "paragraph", "heading1", "heading2", "heading3", "bulletList",
   "numberedList", "todoList", "quote", "code", "divider", "image",
-  "file", "table",
+  "file", "table", "math",
 ]);
+
+const HIGHLIGHT_COLORS = new Set(["yellow", "green", "pink", "blue"]);
 
 const FILE_KINDS = new Set(["image", "document", "audio", "video", "archive", "other"]);
 const THEMES = new Set(["light", "dark", "system"]);
@@ -158,16 +164,35 @@ function validatePage(v: unknown, _errors: string[]): Page | null {
   const id = idStr(v.id, uid);
   const workspaceId = idStr(v.workspaceId, () => "main");
   const parentId = typeof v.parentId === "string" && v.parentId ? v.parentId : null;
+  const folderId = typeof v.folderId === "string" && v.folderId ? v.folderId : null;
   return {
     id,
     workspaceId,
     title: str(v.title, "Untitled").slice(0, 512) || "Untitled",
     icon: str(v.icon, "").slice(0, 16),
     parentId,
+    folderId,
     order: num(v.order, num(v.createdAt)),
     createdAt: num(v.createdAt),
     updatedAt: num(v.updatedAt),
     favorite: bool(v.favorite),
+  };
+}
+
+function validateFolder(v: unknown, _errors: string[]): Folder | null {
+  if (!isRecord(v)) return null;
+  const id = idStr(v.id, uid);
+  const workspaceId = idStr(v.workspaceId, () => "main");
+  const parentId = typeof v.parentId === "string" && v.parentId ? v.parentId : null;
+  return {
+    id,
+    workspaceId,
+    name: str(v.name, "New folder").slice(0, 256) || "New folder",
+    icon: str(v.icon, "").slice(0, 16),
+    parentId,
+    order: num(v.order, num(v.createdAt)),
+    createdAt: num(v.createdAt),
+    updatedAt: num(v.updatedAt),
   };
 }
 
@@ -185,7 +210,10 @@ function validateSpan(v: unknown, length: number): InlineSpan | null {
   if (typeof v.link === "string" && v.link.length > 0) {
     mark.link = v.link.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").slice(0, 512);
   }
-  if (!has && !mark.link) return null;
+  if (typeof v.highlight === "string" && HIGHLIGHT_COLORS.has(v.highlight)) {
+    mark.highlight = v.highlight as InlineSpan["highlight"];
+  }
+  if (!has && !mark.link && !mark.highlight) return null;
   if (mark.to <= mark.from) return null;
   return mark;
 }
@@ -262,6 +290,7 @@ function validateFile(v: unknown, _errors: string[]): LocusFileEntry | null {
     kind: FILE_KINDS.has(kind) ? (kind as FileRef["kind"]) : "other",
     blobKey: idStr(v.blobKey, uid),
     pageId: typeof v.pageId === "string" && v.pageId ? v.pageId : null,
+    folderId: typeof v.folderId === "string" && v.folderId ? v.folderId : null,
     favorite: bool(v.favorite),
     createdAt: num(v.createdAt),
     updatedAt: num(v.updatedAt),
@@ -363,6 +392,40 @@ export function parseLocusText(text: string): ImportResult {
     if (file) files.push(file);
   }
 
+  const foldersRaw = Array.isArray(raw.folders) ? raw.folders : [];
+  const folders: Folder[] = [];
+  const folderIds = new Set<string>();
+  for (const fo of foldersRaw) {
+    const folder = validateFolder(fo, errors);
+    if (folder) {
+      if (folder.parentId === folder.id) folder.parentId = null;
+      folderIds.add(folder.id);
+      folders.push(folder);
+    }
+  }
+  // Break cycles and drop references to unknown folders.
+  const resolveFolder = (id: string | null): string | null => {
+    if (!id || !folderIds.has(id)) return null;
+    let seen = new Set<string>();
+    let cur = id;
+    while (cur) {
+      if (seen.has(cur)) return null;
+      seen.add(cur);
+      const f = folders.find((x) => x.id === cur);
+      if (!f) return null;
+      if (!f.parentId || !folderIds.has(f.parentId)) break;
+      cur = f.parentId;
+    }
+    return id;
+  };
+  for (const p of migratedPages) {
+    p.folderId = resolveFolder(p.folderId);
+  }
+  for (const f of files) {
+    f.folderId = resolveFolder(f.folderId);
+  }
+  const migratedFolders = migrateFolders(folders);
+
   if (pages.length === 0) {
     errors.push("This backup contains no pages.");
   }
@@ -378,6 +441,7 @@ export function parseLocusText(text: string): ImportResult {
     blocks: migratedBlocks,
     tasks: migratedTasks,
     files,
+    folders: migratedFolders,
   };
 
   return { ok: errors.length === 0, errors, warnings, data };

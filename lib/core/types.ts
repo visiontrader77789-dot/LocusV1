@@ -8,7 +8,7 @@
 
 export type ID = string;
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type BlockType =
   | "paragraph"
@@ -23,7 +23,13 @@ export type BlockType =
   | "divider"
   | "image"
   | "file"
-  | "table";
+  | "table"
+  | "math";
+
+/** Text marker highlight colors. Must stay readable in light AND dark mode. */
+export type HighlightColor = "yellow" | "green" | "pink" | "blue";
+
+export const HIGHLIGHT_COLORS: HighlightColor[] = ["yellow", "green", "pink", "blue"];
 
 export interface Workspace {
   id: ID;
@@ -39,11 +45,30 @@ export interface Page {
   title: string;
   icon: string;
   parentId: ID | null;
+  /** Folder this page lives in, if any. Folder membership is inherited by child pages. */
+  folderId: ID | null;
   /** Sibling ordering key (drag-and-drop reorders siblings). */
   order: number;
   createdAt: number;
   updatedAt: number;
   favorite: boolean;
+}
+
+/**
+ * A folder organises pages and files (and other folders). Folders use stable
+ * ids, never paths, so renaming or moving a folder never breaks references.
+ */
+export interface Folder {
+  id: ID;
+  workspaceId: ID;
+  name: string;
+  /** Emoji icon, or "" for none. */
+  icon: string;
+  parentId: ID | null;
+  /** Sibling ordering key. */
+  order: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 /**
@@ -59,6 +84,8 @@ export interface RichMark {
   code?: boolean;
   /** Link target: a page title, or an http(s) URL for external links. */
   link?: string;
+  /** Text marker highlight color. */
+  highlight?: HighlightColor;
 }
 
 export interface InlineSpan extends RichMark {
@@ -132,6 +159,8 @@ export interface FileRef {
   blobKey: ID;
   /** Page this file is attached to, if any. */
   pageId: ID | null;
+  /** Folder this file lives in, if any. */
+  folderId: ID | null;
   favorite: boolean;
   createdAt: number;
   updatedAt: number;
@@ -168,6 +197,20 @@ export interface PageTreeNode {
   children: PageTreeNode[];
 }
 
+export interface FolderTreeNode {
+  folder: Folder;
+  children: FolderTreeNode[];
+}
+
+/**
+ * Combined workspace tree: folders and pages share one hierarchy. A node is
+ * either a folder (containing subfolders and pages) or a page (containing
+ * child pages). Used by the sidebar and folder views.
+ */
+export type WorkspaceNode =
+  | { kind: "folder"; folder: Folder; children: WorkspaceNode[] }
+  | { kind: "page"; page: Page; children: WorkspaceNode[] };
+
 /** A record that carries both the metadata and (where feasible) the bytes of a file inside a .locus backup. */
 export interface LocusFileEntry extends FileRef {
   /** base64-encoded bytes, or null when the file was too large to inline. */
@@ -191,6 +234,7 @@ export function newPage(
   workspaceId: ID,
   title: string,
   parentId: ID | null,
+  folderId: ID | null = null,
 ): Page {
   const now = Date.now();
   return {
@@ -199,10 +243,29 @@ export function newPage(
     title: title || "Untitled",
     icon: "",
     parentId,
+    folderId,
     order: now,
     createdAt: now,
     updatedAt: now,
     favorite: false,
+  };
+}
+
+export function newFolder(
+  workspaceId: ID,
+  name: string,
+  parentId: ID | null,
+): Folder {
+  const now = Date.now();
+  return {
+    id: crypto.randomUUID(),
+    workspaceId,
+    name: name || "New folder",
+    icon: "",
+    parentId,
+    order: now,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -257,6 +320,7 @@ export function newFileRef(
   type: string,
   kind: FileKind,
   blobKey: ID,
+  folderId: ID | null = null,
 ): FileRef {
   const now = Date.now();
   return {
@@ -268,6 +332,7 @@ export function newFileRef(
     kind,
     blobKey,
     pageId: null,
+    folderId,
     favorite: false,
     createdAt: now,
     updatedAt: now,

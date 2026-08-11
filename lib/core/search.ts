@@ -3,10 +3,10 @@
  * Pages, tasks and files are indexed from in-memory state; page *content*
  * (blocks) is scanned lazily on demand so we never hold every block in memory.
  */
-import type { Block, FileRef, ID, Page, Task } from "./types";
+import type { Block, FileRef, Folder, ID, Page, Task } from "./types";
 import { normalize, tokenize } from "./util";
 
-export type SearchKind = "page" | "task" | "file" | "block";
+export type SearchKind = "page" | "task" | "file" | "block" | "folder";
 
 export interface SearchResult {
   kind: SearchKind;
@@ -27,6 +27,7 @@ export interface SearchIndex {
     tasks: Task[],
     files: FileRef[],
     options?: {
+      folders?: Folder[];
       blockScan?: (() => Block[]) | null;
       limit?: number;
     },
@@ -65,6 +66,21 @@ export const searchIndex: SearchIndex = {
     const limit = options.limit ?? 12;
     const results: SearchResult[] = [];
     const blockScan = options.blockScan ?? null;
+
+    for (const folder of options.folders ?? []) {
+      const score = scoreText(folder.name, query);
+      if (score > 0) {
+        results.push({
+          kind: "folder",
+          id: folder.id,
+          title: folder.name,
+          subtitle: "Folder",
+          snippet: folder.name,
+          pageId: null,
+          score,
+        });
+      }
+    }
 
     for (const p of pages) {
       const score = scoreText(p.title, query);
@@ -144,14 +160,16 @@ export interface GroupedResults {
   tasks: SearchResult[];
   files: SearchResult[];
   content: SearchResult[];
+  folders: SearchResult[];
 }
 
 export function groupResults(results: SearchResult[]): GroupedResults {
-  const groups: GroupedResults = { pages: [], tasks: [], files: [], content: [] };
+  const groups: GroupedResults = { pages: [], tasks: [], files: [], content: [], folders: [] };
   for (const r of results) {
     if (r.kind === "page") groups.pages.push(r);
     else if (r.kind === "task") groups.tasks.push(r);
     else if (r.kind === "file") groups.files.push(r);
+    else if (r.kind === "folder") groups.folders.push(r);
     else groups.content.push(r);
   }
   return groups;

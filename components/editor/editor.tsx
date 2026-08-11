@@ -285,7 +285,7 @@ export function Editor({ pageId }: { pageId: string }) {
       // fall through for regular typing
     }
 
-    if (e.key === "Enter" && !e.shiftKey && block.type !== "code") {
+    if (e.key === "Enter" && !e.shiftKey && block.type !== "code" && block.type !== "math") {
       e.preventDefault();
       if (block.content === "- ") {
         onPatch(block.id, { type: "bulletList", content: "", indent: 0 });

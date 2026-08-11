@@ -14,6 +14,7 @@ import {
 import type {
   Block,
   FileRef,
+  Folder,
   ID,
   Page,
   Settings,
@@ -21,9 +22,12 @@ import type {
   ThemeSetting,
   Workspace,
 } from "@/lib/core/types";
-import { WORKSPACE_ID, defaultSettings, emptyWorkspace, newPage, newTask } from "@/lib/core/types";
+import { WORKSPACE_ID, defaultSettings, emptyWorkspace, newFileRef, newFolder, newPage, newTask } from "@/lib/core/types";
 import { seedWorkspace } from "@/lib/core/seed";
-import { buildTree, collectDescendants, planMove, safeTitle, applyMove } from "@/lib/core/tree";
+import {
+  applyFolderMove, applyMove, buildFolderTree, buildTree, collectDescendants,
+  collectFolderDescendants, planFolderMove, planMove, safeTitle,
+} from "@/lib/core/tree";
 import { computeBacklinks, renameLinksInBlocks, type BacklinkRef } from "@/lib/core/backlinks";
 import { type LocusArchive, buildArchive, decodeBase64File, parseLocusText, type ImportResult } from "@/lib/core/serialize";
 import { Repository } from "@/lib/storage/stores";
@@ -59,13 +63,16 @@ interface AppContextValue {
   pages: Page[];
   tasks: Task[];
   files: FileRef[];
+  folders: Folder[];
   blocks: Block[];
   settings: Settings | null;
   saveState: SaveState;
 
   // derived
   tree: ReturnType<typeof buildTree>;
+  folderTree: ReturnType<typeof buildFolderTree>;
   pageById: Map<string, Page>;
+  folderById: Map<string, Folder>;
   backlinksForPage: (pageId: ID) => BacklinkRef[];
   recentPages: Page[];
   favorites: { pages: Page[]; tasks: Task[]; files: FileRef[] };
@@ -78,14 +85,22 @@ interface AppContextValue {
   importArchive: (text: string) => Promise<ImportResult>;
 
   // pages
-  createPage: (parentId: ID | null, title?: string) => Promise<Page>;
+  createPage: (parentId: ID | null, title?: string, folderId?: ID | null) => Promise<Page>;
   renamePage: (id: ID, title: string) => Promise<void>;
   deletePage: (id: ID) => Promise<void>;
   duplicatePage: (id: ID) => Promise<Page | null>;
   toggleFavoritePage: (id: ID) => Promise<void>;
   setPageIcon: (id: ID, icon: string) => Promise<void>;
-  movePage: (id: ID, newParentId: ID | null, beforeId?: ID) => Promise<void>;
+  movePage: (id: ID, newParentId: ID | null, beforeId?: ID, folderId?: ID | null) => Promise<void>;
   updatePage: (patch: Partial<Page>) => Promise<void>;
+
+  // folders
+  createFolder: (parentId: ID | null) => Promise<Folder>;
+  renameFolder: (id: ID, name: string) => Promise<void>;
+  setFolderIcon: (id: ID, icon: string) => Promise<void>;
+  deleteFolder: (id: ID) => Promise<void>;
+  moveFolder: (id: ID, newParentId: ID | null, beforeId?: ID) => Promise<void>;
+  moveFile: (id: ID, folderId: ID | null) => Promise<void>;
 
   // blocks
   blocksForPage: (pageId: ID) => Block[];
@@ -98,7 +113,7 @@ interface AppContextValue {
   toggleFavoriteTask: (id: ID) => Promise<void>;
 
   // files
-  addFiles: (files: File[]) => Promise<FileRef[]>;
+  addFiles: (files: File[], folderId?: ID | null) => Promise<FileRef[]>;
   renameFile: (id: ID, name: string) => Promise<void>;
   deleteFile: (id: ID) => Promise<void>;
   attachFileToPage: (id: ID, pageId: ID | null) => Promise<void>;
@@ -136,6 +151,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pages, setPages] = useState<Page[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [files, setFiles] = useState<FileRef[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -200,18 +216,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const ws = await repo.getWorkspace();
         if (cancelled) return;
         if (ws) {
-          const [pg, t, f, st, bl] = await Promise.all([
+          const [pg, t, f, st, bl, fo] = await Promise.all([
             repo.getPages(),
             repo.getTasks(),
             repo.getFiles(),
             repo.getSettings(),
             repo.getAllBlocks(),
+            repo.getFolders(),
           ]);
           if (cancelled) return;
           setWorkspace(ws);
           setPages(pg);
           setTasks(t);
           setFiles(f);
+          setFolders(fo);
           setSettings(st);
           setBlocks(bl);
         }
@@ -243,6 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPages(seed.pages);
       setTasks(seed.tasks);
       setFiles([]);
+      setFolders([]);
       setBlocks(seed.blocks);
       setSettings(st);
       pushNotice("success", "Workspace created");
@@ -274,6 +293,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await repo.saveBlocks(data.blocks);
       await repo.saveTasks(data.tasks);
       await repo.saveSettings(data.settings);
+      await repo.saveFolders(data.folders);
 
       // Files: inline bytes when present; otherwise metadata only.
       for (const file of data.files) {
@@ -295,6 +315,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBlocks(data.blocks);
       setTasks(data.tasks);
       setFiles(data.files);
+      setFolders(data.folders);
       setSettings(data.settings);
       pushNotice("success", "Workspace restored");
       return result;
@@ -308,6 +329,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPages([]);
     setTasks([]);
     setFiles([]);
+    setFolders([]);
     setBlocks([]);
     setSettings(null);
     window.location.hash = "#/";
@@ -321,16 +343,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pages,
       tasks,
       files,
+      folders,
       blocks,
       blobFor: async (file) => repo.getFileBlob(file),
     });
-  }, [workspace, settings, pages, tasks, files, blocks, repo]);
+  }, [workspace, settings, pages, tasks, files, folders, blocks, repo]);
 
   // ---- pages ----
   const createPage = useCallback(
-    async (parentId: ID | null, title?: string): Promise<Page> => {
+    async (parentId: ID | null, title?: string, folderId: ID | null = null): Promise<Page> => {
       if (!workspace) throw new Error("No workspace.");
-      const page = newPage(workspace.id, title ?? "", parentId);
+      const page = newPage(workspace.id, title ?? "", parentId, folderId);
       setPages((p) => [page, ...p]);
       await repo.savePage(page);
       setSave("saved");
@@ -449,9 +472,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const movePage = useCallback(
-    async (id: ID, newParentId: ID | null, beforeId?: ID) => {
-      const move = planMove(id, pages, newParentId, beforeId);
+    async (id: ID, newParentId: ID | null, beforeId?: ID, folderId?: ID | null) => {
+      const move = planMove(id, pages, newParentId, beforeId, folderId);
       if (!move) return;
+      // Resolve the folder context: an explicit folderId wins; otherwise a
+      // page inherits the folder of its parent page or the sibling it is
+      // placed beside; moving to the top level always means folderId null.
+      if (move.folderId === undefined) {
+        if (move.parentId) {
+          const parent = pages.find((p) => p.id === move.parentId);
+          move.folderId = parent?.folderId ?? null;
+        } else if (move.beforeId) {
+          const sib = pages.find((p) => p.id === move.beforeId);
+          move.folderId = sib?.folderId ?? null;
+        } else {
+          move.folderId = null;
+        }
+      }
       const next = applyMove(pages, move);
       setPages(next);
       await repo.savePages(next);
@@ -470,6 +507,103 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSave("saved");
     },
     [pages, repo, setSave],
+  );
+
+  // ---- folders ----
+  const createFolder = useCallback(
+    async (parentId: ID | null): Promise<Folder> => {
+      if (!workspace) throw new Error("No workspace.");
+      const folder = newFolder(workspace.id, "", parentId);
+      setFolders((f) => [folder, ...f]);
+      await repo.saveFolder(folder);
+      setSave("saved");
+      return folder;
+    },
+    [workspace, repo, setSave],
+  );
+
+  const renameFolder = useCallback(
+    async (id: ID, name: string) => {
+      const folder = folders.find((f) => f.id === id);
+      if (!folder) return;
+      const next: Folder = { ...folder, name: name.trim() || folder.name, updatedAt: Date.now() };
+      setFolders((f) => f.map((x) => (x.id === id ? next : x)));
+      await repo.saveFolder(next);
+      setSave("saved");
+    },
+    [folders, repo, setSave],
+  );
+
+  const setFolderIcon = useCallback(
+    async (id: ID, icon: string) => {
+      const folder = folders.find((f) => f.id === id);
+      if (!folder) return;
+      const next: Folder = { ...folder, icon: icon.slice(0, 16), updatedAt: Date.now() };
+      setFolders((f) => f.map((x) => (x.id === id ? next : x)));
+      await repo.saveFolder(next);
+    },
+    [folders, repo],
+  );
+
+  /**
+   * Deleting a folder never destroys its contents: pages, files and
+   * subfolders are moved up one level (into the folder's parent, or root).
+   */
+  const deleteFolder = useCallback(
+    async (id: ID) => {
+      const target = folders.find((f) => f.id === id);
+      if (!target) return;
+      const doomed = collectFolderDescendants(id, folders, true);
+      const doomedSet = new Set(doomed);
+      const parentId = target.parentId;
+
+      const nextPages = pages.map((p) =>
+        p.folderId && doomedSet.has(p.folderId) ? { ...p, folderId: parentId, updatedAt: Date.now() } : p,
+      );
+      const nextFiles = files.map((f) =>
+        f.folderId && doomedSet.has(f.folderId) ? { ...f, folderId: parentId, updatedAt: Date.now() } : f,
+      );
+      const nextFolders = folders
+        .filter((f) => !doomedSet.has(f.id))
+        .map((f) =>
+          f.parentId && doomedSet.has(f.parentId) ? { ...f, parentId, updatedAt: Date.now() } : f,
+        );
+
+      setPages(nextPages);
+      setFiles(nextFiles);
+      setFolders(nextFolders);
+      await Promise.all([
+        repo.savePages(nextPages),
+        repo.saveFiles(nextFiles),
+        repo.saveFolders(nextFolders),
+        repo.deleteFolder(id),
+      ]);
+      setSave("saved");
+    },
+    [pages, files, folders, repo, setSave],
+  );
+
+  const moveFolder = useCallback(
+    async (id: ID, newParentId: ID | null, beforeId?: ID) => {
+      const move = planFolderMove(id, folders, newParentId, beforeId);
+      if (!move) return;
+      const next = applyFolderMove(folders, { folderId: id, ...move });
+      setFolders(next);
+      await repo.saveFolders(next);
+      setSave("saved");
+    },
+    [folders, repo, setSave],
+  );
+
+  const moveFile = useCallback(
+    async (id: ID, folderId: ID | null) => {
+      const file = files.find((f) => f.id === id);
+      if (!file) return;
+      const next: FileRef = { ...file, folderId, updatedAt: Date.now() };
+      setFiles((f) => f.map((x) => (x.id === id ? next : x)));
+      await repo.saveFile(next);
+    },
+    [files, repo],
   );
 
   // ---- blocks ----
@@ -547,7 +681,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addFiles = useCallback(
-    async (fileList: File[]): Promise<FileRef[]> => {
+    async (fileList: File[], folderId: ID | null = null): Promise<FileRef[]> => {
       if (!workspace) return [];
       const added: FileRef[] = [];
       for (const file of fileList) {
@@ -558,19 +692,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           pushNotice("error", `"${file.name}" is too large to store locally.`);
           continue;
         }
-        const ref: FileRef = {
-          id: uid(),
-          workspaceId: workspace.id,
-          name: file.name,
-          size: file.size,
-          type: file.type || "application/octet-stream",
-          kind: fileKindFor(file.type, file.name),
+        const ref: FileRef = newFileRef(
+          workspace.id,
+          file.name,
+          file.size,
+          file.type || "application/octet-stream",
+          fileKindFor(file.type, file.name),
           blobKey,
-          pageId: null,
-          favorite: false,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        };
+          folderId,
+        );
         added.push(ref);
         await repo.saveFile(ref);
       }
@@ -658,7 +788,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ---- derived ----
   const tree = useMemo(() => buildTree(pages), [pages]);
+  const folderTree = useMemo(() => buildFolderTree(folders), [folders]);
   const pageById = useMemo(() => new Map(pages.map((p) => [p.id, p])), [pages]);
+  const folderById = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
   const backlinksForPage = useCallback(
     (pageId: ID): BacklinkRef[] => {
@@ -694,11 +826,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     pages,
     tasks,
     files,
+    folders,
     blocks,
     settings,
     saveState,
     tree,
+    folderTree,
     pageById,
+    folderById,
     backlinksForPage,
     recentPages,
     favorites,
@@ -715,6 +850,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPageIcon,
     movePage,
     updatePage,
+    createFolder,
+    renameFolder,
+    setFolderIcon,
+    deleteFolder,
+    moveFolder,
+    moveFile,
     blocksForPage,
     saveBlocks,
     createTask,

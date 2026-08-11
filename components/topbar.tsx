@@ -3,7 +3,7 @@
 import { useApp } from "@/lib/store/app";
 import { openPalette } from "@/lib/store/events";
 import type { Route } from "@/lib/store/router";
-import { pathSegments } from "@/lib/core/tree";
+import { folderAncestry, pathSegments } from "@/lib/core/tree";
 import { LocusMark } from "@/components/mark";
 import { IconCheck, IconMenu, IconSearch, IconSettings } from "@/components/icons";
 import { navigate } from "@/lib/store/router";
@@ -25,7 +25,7 @@ function SaveStatus() {
 }
 
 function Breadcrumb({ route }: { route: Route }) {
-  const { pages, workspace } = useApp();
+  const { pages, folders, workspace } = useApp();
 
   if (route.name === "page") {
     const segs = pathSegments(route.id, pages);
@@ -40,6 +40,26 @@ function Breadcrumb({ route }: { route: Route }) {
             <span className={`truncate ${i === segs.length - 1 ? "text-ink" : ""}`}>
               {s.icon ? `${s.icon} ` : ""}
               {s.title}
+            </span>
+          </span>
+        ))}
+      </span>
+    );
+  }
+
+  if (route.name === "folder") {
+    const segs = folderAncestry(route.id, folders);
+    if (segs.length === 0) return <span className="text-ink-3">~/</span>;
+    return (
+      <span className="flex items-center gap-1 font-mono text-[11.5px] text-ink-2 min-w-0">
+        <span className="text-ink-3 shrink-0">~</span>
+        <span className="text-ink-3 shrink-0">/</span>
+        {segs.map((s, i) => (
+          <span key={s.id} className="flex items-center gap-1 min-w-0">
+            {i > 0 && <span className="text-ink-3 shrink-0">/</span>}
+            <span className={`truncate ${i === segs.length - 1 ? "text-ink" : ""}`}>
+              {s.icon ? `${s.icon} ` : ""}
+              {s.name || "untitled"}
             </span>
           </span>
         ))}

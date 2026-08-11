@@ -3,16 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/lib/store/app";
 import { navigate, type Route } from "@/lib/store/router";
-import { collectDescendants, sortPages } from "@/lib/core/tree";
-import type { ID, Page, PageTreeNode } from "@/lib/core/types";
+import { buildWorkspaceTree, collectDescendants, folderAncestry, sortFolders, sortPages } from "@/lib/core/tree";
+import type { Folder, ID, Page, WorkspaceNode } from "@/lib/core/types";
 import { LocusMark } from "@/components/mark";
 import { Menu, MenuItem, MenuSeparator } from "@/components/primitives";
+import { EmojiPicker } from "@/components/emoji-picker";
 import {
   IconChevronDown,
   IconChevronRight,
+  IconChevronUp,
   IconCopy,
   IconFiles,
   IconFolder,
+  IconFolderPlus,
   IconHome,
   IconMore,
   IconPage,
@@ -27,6 +30,17 @@ import {
 
 type DropWhere = "before" | "after" | "inside";
 
+interface DropTarget {
+  kind: "page" | "folder";
+  id: string;
+  where: DropWhere;
+}
+
+interface DragRef {
+  id: string;
+  kind: "page" | "folder";
+}
+
 const NAV = [
   { key: "home", label: "Home", icon: IconHome, route: { name: "dashboard" } as Route },
   { key: "tasks", label: "Tasks", icon: IconTasks, route: { name: "tasks" } as Route },
@@ -34,39 +48,60 @@ const NAV = [
   { key: "favorites", label: "Favorites", icon: IconStar, route: { name: "favorites" } as Route },
 ];
 
-interface TreeRowProps {
-  node: PageTreeNode;
+/** Folders flattened with depth, for "move to folder" menus. */
+function flattenFolders(folders: Folder[], parentId: ID | null = null, depth = 0): Array<{ folder: Folder; depth: number }> {
+  const out: Array<{ folder: Folder; depth: number }> = [];
+  for (const f of folders) {
+    if (f.parentId !== parentId) continue;
+    out.push({ folder: f, depth });
+    out.push(...flattenFolders(folders, f.id, depth + 1));
+  }
+  return out;
+}
+
+interface WorkspaceRowProps {
+  node: WorkspaceNode;
   depth: number;
-  activeId: string | null;
+  activeId: { kind: "page" | "folder"; id: string } | null;
   expanded: Set<string>;
   toggleExpand: (id: string) => void;
-  renaming: string | null;
-  setRenaming: (id: string | null) => void;
+  renaming: { kind: "page" | "folder"; id: string } | null;
+  setRenaming: (r: { kind: "page" | "folder"; id: string } | null) => void;
   onNavigate: () => void;
-  onDrop: (target: { id: string; where: DropWhere }) => void;
-  onDragStart: (e: React.DragEvent, id: string) => void;
-  dropTarget: { id: string; where: DropWhere } | null;
-  onDragOverRow: (e: React.DragEvent, id: string) => void;
+  onDrop: (target: DropTarget) => void;
+  onDragStart: (e: React.DragEvent, ref: DragRef) => void;
+  dropTarget: DropTarget | null;
+  onDragOverRow: (e: React.DragEvent, ref: { kind: "page" | "folder"; id: string }) => void;
   onDragLeaveRow: () => void;
 }
 
-function TreeRow(props: TreeRowProps) {
+function WorkspaceRow(props: WorkspaceRowProps) {
+  const {
+    node, depth, activeId, expanded, toggleExpand, renaming, setRenaming, onNavigate,
+    onDrop, onDragStart, dropTarget, onDragOverRow, onDragLeaveRow,
+  } = props;
+
+  if (node.kind === "folder") return <FolderRow {...props} node={node} />;
+  return <PageRow {...props} node={node} />;
+}
+
+function PageRow(props: WorkspaceRowProps & { node: Extract<WorkspaceNode, { kind: "page" }> }) {
   const {
     node, depth, activeId, expanded, toggleExpand, renaming, setRenaming, onNavigate,
     onDrop, onDragStart, dropTarget, onDragOverRow, onDragLeaveRow,
   } = props;
   const { page, children } = node;
   const {
-    toggleFavoritePage, deletePage, duplicatePage, renamePage, confirm, movePage, pages,
+    toggleFavoritePage, deletePage, duplicatePage, renamePage, confirm, movePage, pages, folders,
   } = useApp();
   const hasChildren = children.length > 0;
   const isOpen = expanded.has(page.id);
-  const isActive = activeId === page.id;
+  const isActive = activeId?.kind === "page" && activeId.id === page.id;
   const isDrop = dropTarget?.id === page.id;
   const [renameValue, setRenameValue] = useState(page.title);
 
   useEffect(() => {
-    if (renaming === page.id) setRenameValue(page.title);
+    if (renaming?.kind === "page" && renaming.id === page.id) setRenameValue(page.title);
   }, [renaming, page.title, page.id]);
 
   const commitRename = () => {
@@ -89,15 +124,17 @@ function TreeRow(props: TreeRowProps) {
     });
   };
 
+  const moveToFolderItems = flattenFolders(folders);
+
   const dragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onDragOverRow(e, page.id);
+    onDragOverRow(e, { kind: "page", id: page.id });
   };
   const drop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onDrop({ id: page.id, where: dropTarget?.id === page.id ? dropTarget!.where : "inside" });
+    onDrop({ kind: "page", id: page.id, where: dropTarget?.id === page.id ? dropTarget!.where : "inside" });
   };
 
   const row = (
@@ -107,12 +144,12 @@ function TreeRow(props: TreeRowProps) {
       } ${isDrop && dropTarget?.where === "inside" ? "bg-accent-soft ring-1 ring-inset ring-accent/40" : ""}`}
       style={{ paddingLeft: 8 + depth * 14 }}
       draggable
-      onDragStart={(e) => onDragStart(e, page.id)}
+      onDragStart={(e) => onDragStart(e, { id: page.id, kind: "page" })}
       onDragOver={dragOver}
       onDragLeave={onDragLeaveRow}
       onDrop={drop}
       onClick={() => {
-        if (renaming === page.id) return;
+        if (renaming?.kind === "page" && renaming.id === page.id) return;
         navigate({ name: "page", id: page.id });
         onNavigate();
       }}
@@ -140,7 +177,7 @@ function TreeRow(props: TreeRowProps) {
         {page.icon ? <span>{page.icon}</span> : <IconPage size={14} className="text-ink-3" />}
       </span>
 
-      {renaming === page.id ? (
+      {renaming?.kind === "page" && renaming.id === page.id ? (
         <input
           autoFocus
           value={renameValue}
@@ -175,7 +212,7 @@ function TreeRow(props: TreeRowProps) {
         </button>
         <div onClick={(e) => e.stopPropagation()}>
           <Menu
-            width={188}
+            width={196}
             trigger={() => (
               <span className="icon-btn !w-5 !h-5" role="button" aria-label="Page options">
                 <IconMore size={14} />
@@ -187,7 +224,7 @@ function TreeRow(props: TreeRowProps) {
                 <MenuItem
                   leading={<IconPen size={13} />}
                   onClick={() => {
-                    setRenaming(page.id);
+                    setRenaming({ kind: "page", id: page.id });
                     close();
                   }}
                 >
@@ -213,6 +250,36 @@ function TreeRow(props: TreeRowProps) {
                     Move to top level
                   </MenuItem>
                 )}
+                <MenuSeparator />
+                <MenuItem leading={<IconFolder size={13} />} onClick={() => close()}>
+                  Move to folder
+                </MenuItem>
+                <div className="max-h-[180px] overflow-y-auto -mx-0.5 px-0.5">
+                  <MenuItem
+                    leading="~/"
+                    onClick={() => {
+                      void movePage(page.id, null, undefined, null);
+                      close();
+                    }}
+                  >
+                    Root (no folder)
+                  </MenuItem>
+                  {moveToFolderItems.map(({ folder, depth: d }) => (
+                    <MenuItem
+                      key={folder.id}
+                      leading={<span className="w-4 text-center text-[12px]">{folder.icon || "📁"}</span>}
+                      onClick={() => {
+                        void movePage(page.id, null, undefined, folder.id);
+                        close();
+                      }}
+                    >
+                      <span className="inline-block" style={{ paddingLeft: d * 12 }}>
+                        {folder.name || "untitled"}
+                      </span>
+                    </MenuItem>
+                  ))}
+                </div>
+                <MenuSeparator />
                 <MenuItem
                   leading={
                     page.favorite ? (
@@ -228,7 +295,6 @@ function TreeRow(props: TreeRowProps) {
                 >
                   {page.favorite ? "Remove favorite" : "Add to favorites"}
                 </MenuItem>
-                <MenuSeparator />
                 <MenuItem danger leading={<IconTrash size={13} />} onClick={() => { close(); handleDelete(); }}>
                   Delete
                 </MenuItem>
@@ -253,8 +319,227 @@ function TreeRow(props: TreeRowProps) {
       {hasChildren && isOpen && (
         <div>
           {children.map((child) => (
-            <TreeRow
-              key={child.page.id}
+            <WorkspaceRow
+              key={child.kind === "page" ? child.page.id : child.folder.id}
+              node={child}
+              depth={depth + 1}
+              activeId={activeId}
+              expanded={expanded}
+              toggleExpand={toggleExpand}
+              renaming={renaming}
+              setRenaming={setRenaming}
+              onNavigate={onNavigate}
+              onDrop={onDrop}
+              onDragStart={onDragStart}
+              dropTarget={dropTarget}
+              onDragOverRow={onDragOverRow}
+              onDragLeaveRow={onDragLeaveRow}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function FolderRow(props: WorkspaceRowProps & { node: Extract<WorkspaceNode, { kind: "folder" }> }) {
+  const {
+    node, depth, activeId, expanded, toggleExpand, renaming, setRenaming, onNavigate,
+    onDrop, onDragStart, dropTarget, onDragOverRow, onDragLeaveRow,
+  } = props;
+  const { folder, children } = node;
+  const { createPage, createFolder, renameFolder, setFolderIcon, deleteFolder, moveFolder, confirm } = useApp();
+  const hasChildren = children.length > 0;
+  const isOpen = expanded.has(folder.id);
+  const isActive = activeId?.kind === "folder" && activeId.id === folder.id;
+  const isDrop = dropTarget?.id === folder.id;
+  const [renameValue, setRenameValue] = useState(folder.name);
+  const [iconPicker, setIconPicker] = useState(false);
+
+  useEffect(() => {
+    if (renaming?.kind === "folder" && renaming.id === folder.id) setRenameValue(folder.name);
+  }, [renaming, folder.name, folder.id]);
+
+  const commitRename = () => {
+    const v = renameValue.trim();
+    if (v) void renameFolder(folder.id, v);
+    setRenaming(null);
+  };
+
+  const handleDelete = () => {
+    confirm({
+      title: "Delete this folder?",
+      body: `"${folder.name || "Untitled"}" will be removed. Its pages, files and subfolders move up into the parent folder — nothing is deleted.`,
+      confirmLabel: "Delete folder",
+      danger: true,
+      onConfirm: () => void deleteFolder(folder.id),
+    });
+  };
+
+  const dragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onDragOverRow(e, { kind: "folder", id: folder.id });
+  };
+  const drop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onDrop({ kind: "folder", id: folder.id, where: dropTarget?.id === folder.id ? dropTarget!.where : "inside" });
+  };
+
+  const row = (
+    <div
+      className={`group relative flex items-center gap-1 pr-1.5 pl-1 py-[3px] rounded-[6px] cursor-pointer select-none transition-colors ${
+        isActive ? "bg-accent-soft text-ink" : "hover:bg-surface-2 text-ink-2 hover:text-ink"
+      } ${isDrop && dropTarget?.where === "inside" ? "bg-accent-soft ring-1 ring-inset ring-accent/40" : ""}`}
+      style={{ paddingLeft: 8 + depth * 14 }}
+      draggable
+      onDragStart={(e) => onDragStart(e, { id: folder.id, kind: "folder" })}
+      onDragOver={dragOver}
+      onDragLeave={onDragLeaveRow}
+      onDrop={drop}
+      onClick={() => {
+        if (renaming?.kind === "folder" && renaming.id === folder.id) return;
+        if (!isOpen) toggleExpand(folder.id);
+        navigate({ name: "folder", id: folder.id });
+        onNavigate();
+      }}
+      role="treeitem"
+      aria-selected={isActive}
+      aria-expanded={hasChildren ? isOpen : undefined}
+    >
+      {hasChildren ? (
+        <button
+          type="button"
+          aria-label={isOpen ? "Collapse" : "Expand"}
+          className="w-4 h-4 flex items-center justify-center text-ink-3 shrink-0 -ml-0.5"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleExpand(folder.id);
+          }}
+        >
+          {isOpen ? <IconChevronDown size={13} /> : <IconChevronRight size={13} />}
+        </button>
+      ) : (
+        <span className="w-4 shrink-0" />
+      )}
+
+      <span className="w-4 h-4 flex items-center justify-center text-[13px] shrink-0">
+        {folder.icon ? <span>{folder.icon}</span> : <IconFolder size={14} className="text-ink-3" />}
+      </span>
+
+      {renaming?.kind === "folder" && renaming.id === folder.id ? (
+        <input
+          autoFocus
+          value={renameValue}
+          className="flex-1 min-w-0 bg-transparent border border-accent rounded-[4px] px-1 text-[13px] text-ink focus:outline-none"
+          onChange={(e) => setRenameValue(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitRename();
+            if (e.key === "Escape") setRenaming(null);
+          }}
+        />
+      ) : (
+        <span className="flex-1 min-w-0 truncate text-[13px]">{folder.name || "untitled"}</span>
+      )}
+
+      <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+        <div onClick={(e) => e.stopPropagation()}>
+          <Menu
+            width={196}
+            trigger={() => (
+              <span className="icon-btn !w-5 !h-5" role="button" aria-label="Folder options">
+                <IconMore size={14} />
+              </span>
+            )}
+          >
+            {(close) => (
+              <>
+                <MenuItem
+                  leading={<IconPage size={13} />}
+                  onClick={() => {
+                    void createPage(null, undefined, folder.id).then((p) => navigate({ name: "page", id: p.id }));
+                    close();
+                  }}
+                >
+                  New page here
+                </MenuItem>
+                <MenuItem
+                  leading={<IconFolderPlus size={13} />}
+                  onClick={() => {
+                    void createFolder(folder.id);
+                    if (!isOpen) toggleExpand(folder.id);
+                    close();
+                  }}
+                >
+                  New subfolder
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem
+                  leading={<IconPen size={13} />}
+                  onClick={() => {
+                    setRenaming({ kind: "folder", id: folder.id });
+                    close();
+                  }}
+                >
+                  Rename
+                </MenuItem>
+                <MenuItem
+                  leading={<IconStar size={13} />}
+                  onClick={() => {
+                    setIconPicker(true);
+                    close();
+                  }}
+                >
+                  Change icon
+                </MenuItem>
+                {folder.parentId && (
+                  <MenuItem
+                    leading={<IconChevronUp size={13} />}
+                    onClick={() => {
+                      void moveFolder(folder.id, null);
+                      close();
+                    }}
+                  >
+                    Move to top level
+                  </MenuItem>
+                )}
+                <MenuSeparator />
+                <MenuItem danger leading={<IconTrash size={13} />} onClick={() => { close(); handleDelete(); }}>
+                  Delete
+                </MenuItem>
+              </>
+            )}
+          </Menu>
+        </div>
+      </span>
+
+      {isDrop && dropTarget?.where === "before" && (
+        <span className="absolute left-1 right-1 top-0 h-[2px] rounded-full bg-accent pointer-events-none" />
+      )}
+      {isDrop && dropTarget?.where === "after" && (
+        <span className="absolute left-1 right-1 bottom-0 h-[2px] rounded-full bg-accent pointer-events-none" />
+      )}
+
+      {iconPicker && (
+        <EmojiPicker
+          onPick={(char) => void setFolderIcon(folder.id, char)}
+          onClose={() => setIconPicker(false)}
+        />
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {row}
+      {hasChildren && isOpen && (
+        <div>
+          {children.map((child) => (
+            <WorkspaceRow
+              key={child.kind === "page" ? child.page.id : child.folder.id}
               node={child}
               depth={depth + 1}
               activeId={activeId}
@@ -283,12 +568,12 @@ export function Sidebar({
   route: Route;
   onNavigate?: () => void;
 }) {
-  const { tree, pages, createPage, movePage, workspace, favorites } = useApp();
+  const { tree, folders, pages, createPage, createFolder, movePage, moveFolder, workspace, favorites } = useApp();
+  const workspaceTree = useMemo(() => buildWorkspaceTree(pages, folders), [pages, folders]);
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const init = new Set<string>();
     if (route.name === "page") {
-      // expand ancestors of the active page
       let cur = pages.find((p) => p.id === route.id);
       const guard = new Set<string>();
       while (cur?.parentId && !guard.has(cur.id)) {
@@ -298,12 +583,16 @@ export function Sidebar({
         cur = pages.find((p) => p.id === pid);
       }
     }
+    if (route.name === "folder") {
+      for (const f of folderAncestry(route.id, folders)) init.add(f.id);
+    }
     for (const root of tree) if (root.children.length > 0) init.add(root.page.id);
+    for (const root of buildWorkspaceTree(pages, folders)) if (root.children.length > 0) init.add(root.kind === "page" ? root.page.id : root.folder.id);
     return init;
   });
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ id: string; where: DropWhere } | null>(null);
-  const dragId = useRef<string | null>(null);
+  const [renaming, setRenaming] = useState<{ kind: "page" | "folder"; id: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const dragRef = useRef<DragRef | null>(null);
   const dragTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -328,7 +617,15 @@ export function Sidebar({
     });
   }, []);
 
-  const activeId = route.name === "page" ? route.id : null;
+  const activeId = useMemo(
+    () =>
+      route.name === "page"
+        ? { kind: "page" as const, id: route.id }
+        : route.name === "folder"
+          ? { kind: "folder" as const, id: route.id }
+          : null,
+    [route],
+  );
 
   const siblingsByParent = useMemo(() => {
     const map = new Map<string | null, Page[]>();
@@ -341,15 +638,58 @@ export function Sidebar({
     return map;
   }, [pages]);
 
+  const folderSiblingsByParent = useMemo(() => {
+    const map = new Map<string | null, Folder[]>();
+    for (const f of folders) {
+      const list = map.get(f.parentId);
+      if (list) list.push(f);
+      else map.set(f.parentId, [f]);
+    }
+    for (const [k, v] of map) map.set(k, sortFolders(v));
+    return map;
+  }, [folders]);
+
   const handleDrop = useCallback(
-    (target: { id: string; where: DropWhere }) => {
-      const dragged = dragId.current;
-      dragId.current = null;
+    (target: DropTarget) => {
+      const dragged = dragRef.current;
+      dragRef.current = null;
       setDropTarget(null);
-      if (!dragged || dragged === target.id) return;
+      if (!dragged || (dragged.id === target.id && dragged.kind === target.kind)) return;
+
+      // Folder dropped onto a page is not a valid move.
+      if (dragged.kind === "folder" && target.kind === "page") return;
+
+      if (dragged.kind === "folder" && target.kind === "folder") {
+        const targetFolder = folders.find((f) => f.id === target.id);
+        if (!targetFolder) return;
+        let parentId: ID | null;
+        let beforeId: ID | undefined;
+        if (target.where === "inside") {
+          parentId = targetFolder.id;
+        } else {
+          parentId = targetFolder.parentId;
+          if (target.where === "before") {
+            beforeId = targetFolder.id;
+          } else {
+            const sibs = folderSiblingsByParent.get(targetFolder.parentId) ?? [];
+            const idx = sibs.findIndex((s) => s.id === targetFolder.id);
+            const nextSibling = idx >= 0 ? sibs[idx + 1] : undefined;
+            beforeId = nextSibling?.id;
+          }
+        }
+        void moveFolder(dragged.id, parentId, beforeId);
+        return;
+      }
+
+      // Page dropped on a folder → move into the folder (top level within it).
+      if (target.kind === "folder") {
+        void movePage(dragged.id, null, undefined, target.id);
+        return;
+      }
+
+      // Page dropped on a page.
       const targetPage = pages.find((p) => p.id === target.id);
       if (!targetPage) return;
-
       let parentId: ID | null;
       let beforeId: ID | undefined;
       if (target.where === "inside") {
@@ -364,22 +704,30 @@ export function Sidebar({
         const nextSibling = idx >= 0 ? siblings[idx + 1] : undefined;
         beforeId = nextSibling?.id;
       }
-      void movePage(dragged, parentId, beforeId);
+      void movePage(dragged.id, parentId, beforeId);
     },
-    [pages, siblingsByParent, movePage],
+    [pages, folders, siblingsByParent, folderSiblingsByParent, movePage, moveFolder],
   );
 
-  const onDragStart = (e: React.DragEvent, id: string) => {
-    dragId.current = id;
+  const onDragStart = (e: React.DragEvent, ref: DragRef) => {
+    dragRef.current = ref;
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.setData("text/plain", ref.id);
   };
 
-  const onDragOverRow = (e: React.DragEvent, id: string) => {
+  const onDragOverRow = (e: React.DragEvent, ref: { kind: "page" | "folder"; id: string }) => {
+    const dragged = dragRef.current;
+    // Folders can't nest inside pages — show nothing there.
+    if (dragged?.kind === "folder" && ref.kind === "page") {
+      setDropTarget(null);
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = (e.clientY - rect.top) / rect.height;
-    const where: DropWhere = ratio < 0.3 ? "before" : ratio > 0.7 ? "after" : "inside";
-    setDropTarget((prev) => (prev && prev.id === id && prev.where === where ? prev : { id, where }));
+    let where: DropWhere = ratio < 0.3 ? "before" : ratio > 0.7 ? "after" : "inside";
+    // Pages dropped on folders always land inside the folder.
+    if (dragged?.kind === "page" && ref.kind === "folder") where = "inside";
+    setDropTarget((prev) => (prev && prev.id === ref.id && prev.where === where ? prev : { kind: ref.kind, id: ref.id, where }));
   };
 
   const onDragLeaveRow = () => {
@@ -387,10 +735,11 @@ export function Sidebar({
     dragTimer.current = window.setTimeout(() => setDropTarget(null), 80);
   };
 
-  const handleCreatePage = async (parentId: ID | null) => {
-    const page = await createPage(parentId);
+  const handleCreatePage = async (parentId: ID | null, folderId?: ID | null) => {
+    const page = await createPage(parentId, undefined, folderId ?? null);
     navigate({ name: "page", id: page.id });
     if (parentId) toggleExpand(parentId);
+    if (folderId) toggleExpand(folderId);
     onNavigate?.();
   };
 
@@ -507,30 +856,43 @@ export function Sidebar({
           setDropTarget(null);
         }}
         onDrop={(e) => {
-          const dragged = dragId.current;
+          const dragged = dragRef.current;
           e.preventDefault();
-          dragId.current = null;
+          dragRef.current = null;
           setDropTarget(null);
-          if (dragged) void movePage(dragged, null);
+          if (!dragged) return;
+          if (dragged.kind === "folder") void moveFolder(dragged.id, null);
+          else void movePage(dragged.id, null, undefined, null);
         }}
       >
         <div className="flex items-center justify-between px-1 mb-1">
-          <span className="eyebrow">Pages</span>
-          <button
-            type="button"
-            aria-label="New page"
-            data-tip="New page"
-            className="icon-btn !w-6 !h-6"
-            onClick={() => void handleCreatePage(null)}
-          >
-            <IconPlus size={13} />
-          </button>
+          <span className="eyebrow">Workspace</span>
+          <span className="flex items-center gap-0.5">
+            <button
+              type="button"
+              aria-label="New folder"
+              data-tip="New folder"
+              className="icon-btn !w-6 !h-6"
+              onClick={() => void createFolder(null)}
+            >
+              <IconFolderPlus size={13} />
+            </button>
+            <button
+              type="button"
+              aria-label="New page"
+              data-tip="New page"
+              className="icon-btn !w-6 !h-6"
+              onClick={() => void handleCreatePage(null)}
+            >
+              <IconPlus size={13} />
+            </button>
+          </span>
         </div>
 
-        <div role="tree" aria-label="Pages">
-          {tree.map((node) => (
-            <TreeRow
-              key={node.page.id}
+        <div role="tree" aria-label="Workspace">
+          {workspaceTree.map((node) => (
+            <WorkspaceRow
+              key={node.kind === "page" ? node.page.id : node.folder.id}
               node={node}
               depth={0}
               activeId={activeId}
@@ -548,15 +910,15 @@ export function Sidebar({
           ))}
         </div>
 
-        {pages.length === 0 && (
+        {workspaceTree.length === 0 && (
           <p className="px-1 pt-1 text-[12px] text-ink-3">
-            No pages yet.
+            Nothing here yet.
             <button
               type="button"
               className="text-accent hover:underline ml-1"
               onClick={() => void handleCreatePage(null)}
             >
-              Create one
+              Create a page
             </button>
           </p>
         )}

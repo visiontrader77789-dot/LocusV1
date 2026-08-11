@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Block, BlockType, FileRef, InlineSpan } from "@/lib/core/types";
+import type { Block, BlockType, FileRef, HighlightColor, InlineSpan } from "@/lib/core/types";
 import { formatBytes } from "@/lib/core/util";
-import { readBlock, richHtml } from "@/lib/core/rich";
-import { IconCheck, IconCopy, IconDownload, IconFileOther, IconGrip, IconTrash } from "@/components/icons";
+import { readBlock, renderMath, richHtml } from "@/lib/core/rich";
+import { IconCheck, IconCopy, IconDownload, IconFileOther, IconGrip, IconMath, IconTrash } from "@/components/icons";
 import { Menu, MenuItem, MenuSeparator } from "@/components/primitives";
 import { SlashMenu } from "./slash-menu";
 import { FormatToolbar, type FormatActive, type FormatCommand } from "./format-toolbar";
@@ -93,6 +93,15 @@ function selectionInsideTag(el: HTMLElement, tag: string): boolean {
   return start !== null && end !== null && climb(start) && climb(end);
 }
 
+function selectionHighlightColor(el: HTMLElement): HighlightColor | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  const startEl = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+  const m = startEl?.closest("mark")?.className.match(/hl-(yellow|green|pink|blue)/);
+  return m ? (m[1] as HighlightColor) : null;
+}
+
 function useBlobUrl(
   file: FileRef | undefined,
   getBlobUrl: EditorHandlers["getBlobUrl"],
@@ -141,7 +150,7 @@ export function EditorBlock({
   // Contextual formatting toolbar state.
   const [selRect, setSelRect] = useState<{ x: number; y: number } | null>(null);
   const [fmtActive, setFmtActive] = useState<FormatActive>({
-    bold: false, italic: false, underline: false, strike: false, code: false,
+    bold: false, italic: false, underline: false, strike: false, code: false, highlight: null,
   });
   const [linkMode, setLinkMode] = useState(false);
   const [linkValue, setLinkValue] = useState("");
@@ -230,6 +239,7 @@ export function EditorBlock({
         underline: document.queryCommandState?.("underline") ?? false,
         strike: document.queryCommandState?.("strikeThrough") ?? false,
         code: selectionInsideTag(el, "code"),
+        highlight: selectionHighlightColor(el),
       });
     };
     document.addEventListener("selectionchange", update);
@@ -342,6 +352,56 @@ export function EditorBlock({
     setLinkMode(true);
   };
 
+  const applyHighlight = (el: HTMLElement, color: HighlightColor | null) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    const startEl = range.startContainer instanceof Element
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    const markEl = startEl?.closest("mark");
+    if (!color) {
+      // Clear: unwrap any mark the caret/selection sits in.
+      if (markEl) {
+        const parent = markEl.parentNode;
+        if (parent) {
+          while (markEl.firstChild) parent.insertBefore(markEl.firstChild, markEl);
+          parent.removeChild(markEl);
+        }
+      }
+      return;
+    }
+    if (markEl) {
+      markEl.className = `hl-${color}`;
+      return;
+    }
+    if (!range.collapsed) {
+      const mark = document.createElement("mark");
+      mark.className = `hl-${color}`;
+      mark.textContent = range.toString();
+      range.deleteContents();
+      range.insertNode(mark);
+      const sel2 = window.getSelection();
+      const r2 = document.createRange();
+      r2.setStartAfter(mark);
+      r2.collapse(true);
+      sel2?.removeAllRanges();
+      sel2?.addRange(r2);
+      return;
+    }
+    // Collapsed caret: open an empty highlight run so typing stays highlighted.
+    const mark = document.createElement("mark");
+    mark.className = `hl-${color}`;
+    mark.textContent = "\u200b";
+    range.insertNode(mark);
+    const sel2 = window.getSelection();
+    const r2 = document.createRange();
+    r2.selectNodeContents(mark);
+    r2.collapse(true);
+    sel2?.removeAllRanges();
+    sel2?.addRange(r2);
+  };
+
   const runFormat = (cmd: FormatCommand) => {
     const el = elRef.current;
     if (!el) return;
@@ -351,6 +411,9 @@ export function EditorBlock({
     } else if (cmd === "link") {
       openLinkInput();
       return;
+    } else if (cmd.startsWith("highlight:")) {
+      const color = cmd === "highlight:none" ? null : (cmd.slice("highlight:".length) as HighlightColor);
+      applyHighlight(el, color);
     } else {
       document.execCommand(cmd, false);
     }
@@ -613,6 +676,40 @@ export function EditorBlock({
           onChange={(e) => onContentChange(block.id, e.target.value)}
           onKeyDown={onTextareaKeyDown}
         />
+      </div>
+    );
+  }
+
+  if (block.type === "math") {
+    const previewHtml = renderMath(block.content, true);
+    return (
+      <div className="editor-block-row group relative" style={wrapperStyle}>
+        <Handle block={block} handlers={handlers} />
+        <div className={`flex-1 min-w-0 my-2 rounded-[8px] border ${isOver ? "border-accent" : "border-line"} bg-surface overflow-x-auto`}
+          onDragOver={dragOver} onDrop={(e) => onDropBlock(e, block.id)}>
+          {previewHtml ? (
+            <div
+              className="math-block px-4 py-3"
+              dangerouslySetInnerHTML={{ __html: previewHtml }}
+              aria-label="Equation preview"
+            />
+          ) : (
+            <div className="px-4 pt-2.5 text-[12.5px] text-ink-3 eyebrow">LaTeX preview</div>
+          )}
+          <textarea
+            ref={taRef}
+            value={block.content}
+            rows={Math.max(1, block.content.split("\n").length)}
+            spellCheck={false}
+            placeholder="Type LaTeX, e.g. E = mc^2"
+            aria-label="Math block"
+            className="editor-block editor-code !h-auto w-full resize-y border-0 border-t border-line !rounded-none"
+            onFocus={() => onFocusBlock(block.id)}
+            onInput={() => onFocusBlock(block.id)}
+            onChange={(e) => onContentChange(block.id, e.target.value)}
+            onKeyDown={onTextareaKeyDown}
+          />
+        </div>
       </div>
     );
   }

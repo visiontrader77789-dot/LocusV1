@@ -148,4 +148,24 @@ describe("richHtml", () => {
     expect(html).toContain('data-external="true"');
     expect(html).not.toContain("link-chip");
   });
+
+  it("renders highlight marks as <mark>", () => {
+    const html = richHtml("Hello world", [
+      { from: 0, to: 5, highlight: "yellow" },
+      { from: 6, to: 11, highlight: "blue" },
+    ]);
+    expect(html).toContain('<mark class="hl-yellow">Hello</mark>');
+    expect(html).toContain('<mark class="hl-blue">world</mark>');
+  });
+
+  it("renders inline math as KaTeX when chips are on", () => {
+    const html = richHtml("E = $mc^2$!", [], true);
+    expect(html).toContain('class="math-inline"');
+    expect(html).toContain('data-math="mc^2"');
+    expect(html).not.toContain("$mc^2$");
+  });
+
+  it("keeps inline math as plain text when chips are off", () => {
+    expect(richHtml("E = $mc^2$!", [], false)).toBe("E = $mc^2$!");
+  });
 });

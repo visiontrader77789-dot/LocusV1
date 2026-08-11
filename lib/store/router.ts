@@ -8,6 +8,7 @@
 export type Route =
   | { name: "dashboard" }
   | { name: "page"; id: string }
+  | { name: "folder"; id: string }
   | { name: "tasks" }
   | { name: "files" }
   | { name: "favorites" }
@@ -24,6 +25,11 @@ export function parseHash(hash?: string): Route {
     if (id) return { name: "page", id };
     return { name: "dashboard" };
   }
+  if (h.startsWith("f/")) {
+    const id = decodeURIComponent(h.slice(2));
+    if (id) return { name: "folder", id };
+    return { name: "dashboard" };
+  }
   switch (h) {
     case "tasks": return { name: "tasks" };
     case "files": return { name: "files" };
@@ -37,6 +43,7 @@ export function parseHash(hash?: string): Route {
 export function toHash(route: Route): string {
   switch (route.name) {
     case "page": return `#/p/${encodeURIComponent(route.id)}`;
+    case "folder": return `#/f/${encodeURIComponent(route.id)}`;
     case "tasks": return "#/tasks";
     case "files": return "#/files";
     case "favorites": return "#/favorites";

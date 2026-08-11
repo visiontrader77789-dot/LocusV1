@@ -69,6 +69,8 @@ function View({ route }: { route: Route }) {
   switch (route.name) {
     case "page":
       return <PageView key={route.id} pageId={route.id} />;
+    case "folder":
+      return <FilesView key={route.id} folderId={route.id} />;
     case "tasks":
       return <TasksView />;
     case "files":

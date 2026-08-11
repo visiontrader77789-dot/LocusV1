@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  IconBold, IconCodeInline, IconItalic, IconLink, IconStrike, IconUnderline,
+  IconBold, IconCodeInline, IconHighlighter, IconItalic, IconLink, IconStrike, IconUnderline,
 } from "@/components/icons";
+import type { HighlightColor } from "@/lib/core/types";
 
-export type FormatCommand = "bold" | "italic" | "underline" | "strikeThrough" | "code" | "link";
+export type FormatCommand =
+  | "bold" | "italic" | "underline" | "strikeThrough" | "code" | "link"
+  | `highlight:${HighlightColor}`
+  | "highlight:none";
 
 export interface FormatActive {
   bold: boolean;
@@ -13,7 +17,15 @@ export interface FormatActive {
   underline: boolean;
   strike: boolean;
   code: boolean;
+  highlight: HighlightColor | null;
 }
+
+const HIGHLIGHT_OPTIONS: Array<{ color: HighlightColor; label: string }> = [
+  { color: "yellow", label: "Yellow highlight" },
+  { color: "green", label: "Green highlight" },
+  { color: "pink", label: "Pink highlight" },
+  { color: "blue", label: "Blue highlight" },
+];
 
 export function FormatToolbar({
   x,
@@ -37,12 +49,13 @@ export function FormatToolbar({
   onLinkCancel: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [hlOpen, setHlOpen] = useState(false);
 
   useEffect(() => {
     if (linkMode) inputRef.current?.focus();
   }, [linkMode]);
 
-  const width = linkMode ? 240 : 208;
+  const width = linkMode ? 240 : 232;
   const left = Math.max(12, Math.min(x - width / 2, window.innerWidth - width - 12));
 
   return (
@@ -120,6 +133,47 @@ export function FormatToolbar({
             <IconCodeInline size={14} />
           </button>
           <span className="format-sep" aria-hidden="true" />
+          <span className="relative">
+            <button
+              type="button"
+              aria-label="Highlight"
+              title="Highlight"
+              className={`format-btn ${active.highlight ? "active" : ""}`}
+              onClick={() => setHlOpen((o) => !o)}
+            >
+              <IconHighlighter size={14} />
+            </button>
+            {hlOpen && (
+              <div
+                className="absolute top-full right-0 mt-1 z-50 bg-surface border border-line rounded-[6px] shadow-[var(--shadow-2)] anim-pop p-1.5 w-[150px]"
+                role="menu"
+                aria-label="Highlight color"
+              >
+                <div className="px-1 pb-1 eyebrow">Highlight</div>
+                <div className="flex items-center gap-1.5">
+                  {HIGHLIGHT_OPTIONS.map(({ color, label }) => (
+                    <button
+                      key={color}
+                      type="button"
+                      aria-label={label}
+                      title={label}
+                      className={`hl-swatch hl-${color} ${active.highlight === color ? "hl-swatch-on" : ""}`}
+                      onClick={() => { onFormat(`highlight:${color}`); setHlOpen(false); }}
+                    />
+                  ))}
+                </div>
+                {active.highlight && (
+                  <button
+                    type="button"
+                    className="w-full mt-1.5 h-6.5 px-2 rounded-[5px] text-[11.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
+                    onClick={() => { onFormat("highlight:none"); setHlOpen(false); }}
+                  >
+                    Clear highlight
+                  </button>
+                )}
+              </div>
+            )}
+          </span>
           <button
             type="button"
             aria-label="Link"

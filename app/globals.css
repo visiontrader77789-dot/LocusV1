@@ -547,6 +547,77 @@ select {
   color: var(--accent);
 }
 
+/* ---- Text highlight ------------------------------------------------------ */
+
+mark.hl-yellow { background: rgb(238 197 66 / 0.32); }
+mark.hl-green  { background: rgb(74 200 121 / 0.3); }
+mark.hl-pink   { background: rgb(236 128 168 / 0.3); }
+mark.hl-blue   { background: rgb(93 158 248 / 0.3); }
+mark.hl-yellow,
+mark.hl-green,
+mark.hl-pink,
+mark.hl-blue {
+  color: var(--ink);
+  border-radius: 3px;
+  padding: 0.5px 2px;
+  margin: 0 -1px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.hl-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.hl-swatch:hover {
+  transform: scale(1.08);
+}
+.hl-swatch-on {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--accent);
+}
+[data-theme="dark"] .hl-swatch {
+  border-color: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+
+/* ---- Math ---------------------------------------------------------------- */
+
+.math-inline {
+  font-family: var(--font-display);
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 0 3px;
+  margin: 0 -1px;
+  white-space: nowrap;
+}
+[data-theme="dark"] .math-inline {
+  color: var(--accent);
+}
+.math-inline .katex {
+  font-size: 0.94em;
+}
+.math-block {
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--ink);
+  overflow-x: auto;
+  padding: 6px 2px;
+}
+.math-block .katex-display {
+  margin: 0;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .editor-paragraph { font-size: 16px; }
   .editor-h1 { font-size: 22px; }

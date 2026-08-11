@@ -5,14 +5,14 @@ import { useApp } from "@/lib/store/app";
 import { searchIndex, groupResults, type SearchResult } from "@/lib/core/search";
 import { navigate } from "@/lib/store/router";
 import { closePalette, onPaletteClose, onPaletteOpen } from "@/lib/store/events";
-import { IconFiles, IconPage, IconSearch, IconTasks, IconUpload, IconX } from "@/components/icons";
+import { IconFiles, IconFolder, IconPage, IconSearch, IconTasks, IconUpload, IconX } from "@/components/icons";
 import { LocusMark } from "@/components/mark";
 
 type Mode = "search" | "task" | "page";
 
 export function CommandPalette() {
   const {
-    pages, tasks, files, blocks,
+    pages, tasks, files, blocks, folders,
     createTask, createPage, addFiles, pushNotice, updateTask,
   } = useApp();
   const [open, setOpen] = useState(false);
@@ -44,11 +44,12 @@ export function CommandPalette() {
     if (mode !== "search" || !query.trim()) return groupResults([]);
     return groupResults(
       searchIndex.query(query, pages, tasks, files, {
+        folders,
         blockScan: () => blocks,
         limit: 14,
       }),
     );
-  }, [mode, query, pages, tasks, files, blocks]);
+  }, [mode, query, pages, tasks, files, blocks, folders]);
 
   const flat = useMemo(() => {
     const list: Array<{ label?: string; result?: SearchResult }> = [];
@@ -57,6 +58,7 @@ export function CommandPalette() {
       list.push({ label });
       for (const r of rs) list.push({ result: r });
     };
+    pushGroup("Folders", results.folders);
     pushGroup("Pages", results.pages);
     pushGroup("Tasks", results.tasks);
     pushGroup("Files", results.files);
@@ -74,7 +76,11 @@ export function CommandPalette() {
   }, [active]);
 
   const runResult = useCallback((r: SearchResult) => {
-    if (r.kind === "page") {
+    if (r.kind === "folder") {
+      setOpen(false);
+      closePalette();
+      navigate({ name: "folder", id: r.id });
+    } else if (r.kind === "page") {
       setOpen(false);
       closePalette();
       navigate({ name: "page", id: r.id });
@@ -172,7 +178,7 @@ export function CommandPalette() {
             className="flex-1 bg-transparent text-[14px] outline-none placeholder:text-ink-3"
             placeholder={
               mode === "search"
-                ? "Search pages, tasks, files…"
+                ? "Search pages, folders, tasks, files…"
                 : mode === "task"
                   ? "Task title, then press Enter"
                   : "Page title, then press Enter"
@@ -233,9 +239,9 @@ export function CommandPalette() {
                 onClick={() => { if (item.result) runResult(item.result); }}
               >
                 <span className={`w-4 h-4 shrink-0 flex items-center justify-center ${
-                  item.result.kind === "page" ? "text-ink-3" : item.result.kind === "task" ? "text-accent" : item.result.kind === "file" ? "text-warn" : "text-ink-3"
+                  item.result.kind === "page" ? "text-ink-3" : item.result.kind === "task" ? "text-accent" : item.result.kind === "file" ? "text-warn" : item.result.kind === "folder" ? "text-accent" : "text-ink-3"
                 }`}>
-                  {item.result.kind === "page" ? <IconPage size={14} /> : item.result.kind === "task" ? <IconTasks size={14} /> : item.result.kind === "file" ? <IconFiles size={14} /> : <LocusMark size={13} />}
+                  {item.result.kind === "page" ? <IconPage size={14} /> : item.result.kind === "task" ? <IconTasks size={14} /> : item.result.kind === "file" ? <IconFiles size={14} /> : item.result.kind === "folder" ? <IconFolder size={14} /> : <LocusMark size={13} />}
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-[13.5px] truncate text-ink">{item.result.title}</span>
