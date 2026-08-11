@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { WidgetType } from "@/lib/core/widgets";
-import { WIDGET_CATALOG, WIDGET_CATEGORIES } from "./registry";
+import type { WidgetInstance, WidgetType } from "@/lib/core/widgets";
+import { WIDGET_CATALOG, WIDGET_CATEGORIES, type WidgetDef } from "./registry";
 import { Button, IconBtn, TextField } from "@/components/primitives";
 import { IconCheck, IconX } from "@/components/icons";
 
@@ -52,9 +52,11 @@ export function WidgetLibrary({
       if (e.key === "Tab") {
         const panel = panelRef.current;
         if (!panel) return;
-        const focusables = panel.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        );
+        const focusables = Array.from(
+          panel.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => !el.closest("[inert]"));
         if (focusables.length === 0) return;
         const first = focusables[0];
         const last = focusables[focusables.length - 1];
@@ -92,7 +94,7 @@ export function WidgetLibrary({
         aria-modal="true"
         aria-label="Add widgets"
         tabIndex={-1}
-        className="relative w-full max-w-[560px] mt-6 sm:mt-12 bg-surface border border-line rounded-[10px] shadow-[var(--shadow-2)] anim-rise outline-none"
+        className="relative w-full max-w-[640px] mt-6 sm:mt-12 bg-surface border border-line rounded-[10px] shadow-[var(--shadow-2)] anim-rise outline-none"
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-line">
           <div>
@@ -137,38 +139,53 @@ export function WidgetLibrary({
             <p className="mt-1 text-[12px] text-ink-3">Try a different search or category.</p>
           </div>
         ) : (
-          <ul className="px-3 py-2 max-h-[46vh] overflow-y-auto divide-y divide-line">
+          <ul className="px-4 py-3 max-h-[54vh] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {items.map((def) => {
               const isAdded = added.has(def.type);
               return (
-                <li key={def.type} className="flex items-center gap-3.5 py-2.5 px-2">
-                  <span className="w-9 h-9 shrink-0 flex items-center justify-center rounded-[8px] border border-line bg-surface-2 text-ink-2">
-                    {def.icon}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <div className="text-[13.5px] font-medium">{def.name}</div>
-                      <span className="font-mono text-[9.5px] text-ink-3 uppercase tracking-[0.1em]">
-                        {def.category}
-                      </span>
+                <li
+                  key={def.type}
+                  data-widget-card={def.type}
+                  className="flex flex-col rounded-[8px] border border-line bg-surface p-3 transition-colors hover:border-line-strong"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-7 h-7 shrink-0 flex items-center justify-center rounded-[6px] border border-line bg-surface-2 text-ink-2">
+                      {def.icon}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-1.5 min-w-0">
+                        <span className="text-[13.5px] font-medium truncate">{def.name}</span>
+                        <span className="font-mono text-[9px] text-ink-3 uppercase tracking-[0.1em] shrink-0">
+                          {def.category}
+                        </span>
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-[12px] text-ink-2 leading-snug">{def.description}</div>
+                    <Button
+                      variant={isAdded ? "secondary" : "primary"}
+                      size="sm"
+                      className="shrink-0 min-w-[74px]"
+                      disabled={isAdded}
+                      onClick={() => onAdd(def.type)}
+                    >
+                      {isAdded ? (
+                        <span className="flex items-center gap-1">
+                          <IconCheck size={12} /> Added
+                        </span>
+                      ) : (
+                        "Add"
+                      )}
+                    </Button>
                   </div>
-                  <Button
-                    variant={isAdded ? "secondary" : "primary"}
-                    size="sm"
-                    className="shrink-0 min-w-[74px]"
-                    disabled={isAdded}
-                    onClick={() => onAdd(def.type)}
-                  >
-                    {isAdded ? (
-                      <span className="flex items-center gap-1">
-                        <IconCheck size={12} /> Added
-                      </span>
-                    ) : (
-                      "Add"
-                    )}
-                  </Button>
+                  <p className="mt-1.5 text-[12px] text-ink-2 leading-snug">{def.description}</p>
+                  <div className="relative mt-2.5 rounded-[6px] border border-line bg-surface-2/60 overflow-hidden">
+                    <div inert aria-hidden="true" className="pointer-events-none px-3 pt-3 pb-2">
+                      <LivePreview def={def} />
+                    </div>
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface-2/90 to-transparent"
+                    />
+                  </div>
                 </li>
               );
             })}
@@ -183,4 +200,16 @@ export function WidgetLibrary({
       </div>
     </div>
   );
+}
+
+const noop = () => {};
+
+/** Static, non-interactive live preview of a widget. */
+function LivePreview({ def }: { def: WidgetDef }) {
+  const Comp = def.component;
+  const instance = useMemo<WidgetInstance>(
+    () => ({ id: `preview-${def.type}`, type: def.type, size: def.defaultSize, data: {} }),
+    [def],
+  );
+  return <Comp instance={instance} setData={noop} />;
 }

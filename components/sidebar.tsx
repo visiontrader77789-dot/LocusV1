@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/lib/store/app";
 import { navigate, type Route } from "@/lib/store/router";
-import { buildTree, collectDescendants, sortPages } from "@/lib/core/tree";
+import { collectDescendants, sortPages } from "@/lib/core/tree";
 import type { ID, Page, PageTreeNode } from "@/lib/core/types";
-import { LocusMark, LocusWordmark } from "@/components/mark";
-import { Menu, MenuItem, MenuSeparator, MenuLabel } from "@/components/primitives";
+import { LocusMark } from "@/components/mark";
+import { Menu, MenuItem, MenuSeparator } from "@/components/primitives";
 import {
   IconChevronDown,
   IconChevronRight,

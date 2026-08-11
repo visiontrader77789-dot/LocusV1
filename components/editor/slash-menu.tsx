@@ -58,13 +58,11 @@ export function SlashMenu({
   active,
   setActive,
   onSelect,
-  onClose,
 }: {
   query: string;
   active: number;
   setActive: (i: number) => void;
   onSelect: (type: BlockType) => void;
-  onClose: () => void;
 }) {
   const items = useMemo(() => filterSlashItems(query), [query]);
   const ref = useRef<HTMLDivElement>(null);

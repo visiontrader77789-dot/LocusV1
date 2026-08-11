@@ -25,7 +25,7 @@ function SaveStatus() {
 }
 
 function Breadcrumb({ route }: { route: Route }) {
-  const { pages, pageById, workspace } = useApp();
+  const { pages, workspace } = useApp();
 
   if (route.name === "page") {
     const segs = pathSegments(route.id, pages);

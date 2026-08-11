@@ -60,7 +60,7 @@ export function PrivacyView() {
 
       <div className="mt-6 rounded-[8px] border border-dashed border-line-strong px-4 py-3.5">
         <p className="text-[12.5px] text-ink-2 leading-relaxed">
-          A note on “offline”: Locus stores data in your browser's storage, which is tied to this browser and device.
+          A note on “offline”: Locus stores data in your browser&apos;s storage, which is tied to this browser and device.
           Clearing site data or switching browsers removes access — keep a .locus backup exported if that matters to you.
         </p>
       </div>

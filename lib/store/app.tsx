@@ -21,7 +21,7 @@ import type {
   ThemeSetting,
   Workspace,
 } from "@/lib/core/types";
-import { WORKSPACE_ID, defaultSettings, emptyWorkspace, newBlock, newPage, newTask } from "@/lib/core/types";
+import { WORKSPACE_ID, defaultSettings, emptyWorkspace, newPage, newTask } from "@/lib/core/types";
 import { seedWorkspace } from "@/lib/core/seed";
 import { buildTree, collectDescendants, planMove, safeTitle, applyMove } from "@/lib/core/tree";
 import { computeBacklinks, renameLinksInBlocks, type BacklinkRef } from "@/lib/core/backlinks";
@@ -579,7 +579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return added;
     },
-    [workspace, files]
+    [workspace, pushNotice, repo]
   );
 
   const renameFile = useCallback(

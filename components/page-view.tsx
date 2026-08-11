@@ -21,7 +21,6 @@ function PageHeader({ page }: { page: Page }) {
   } = useApp();
 
   const [title, setTitle] = useState(page.title);
-  const [iconOpen, setIconOpen] = useState(false);
   const [iconValue, setIconValue] = useState("");
   const savedRef = useRef(page.title);
 

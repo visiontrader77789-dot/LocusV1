@@ -152,7 +152,7 @@ const FILE_KINDS = new Set(["image", "document", "audio", "video", "archive", "o
 const THEMES = new Set(["light", "dark", "system"]);
 const SPACINGS = new Set(["compact", "comfortable"]);
 
-function validatePage(v: unknown, errors: string[]): Page | null {
+function validatePage(v: unknown, _errors: string[]): Page | null {
   if (!isRecord(v)) return null;
   const id = idStr(v.id, uid);
   const workspaceId = idStr(v.workspaceId, () => "main");
@@ -230,7 +230,7 @@ function validateBlock(v: unknown, errors: string[]): Block | null {
   };
 }
 
-function validateTask(v: unknown, errors: string[]): Task | null {
+function validateTask(v: unknown, _errors: string[]): Task | null {
   if (!isRecord(v)) return null;
   const priority = num(v.priority, 0);
   return {
@@ -249,7 +249,7 @@ function validateTask(v: unknown, errors: string[]): Task | null {
   };
 }
 
-function validateFile(v: unknown, errors: string[]): LocusFileEntry | null {
+function validateFile(v: unknown, _errors: string[]): LocusFileEntry | null {
   if (!isRecord(v)) return null;
   const kind = str(v.kind);
   return {

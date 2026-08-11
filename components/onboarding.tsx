@@ -28,7 +28,6 @@ function LocalWriteProof() {
       setStep(WRITE_LINES.length);
       return;
     }
-    let i = 0;
     let alive = true;
     const type = (text: string, resolve: () => void) => {
       let j = 0;

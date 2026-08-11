@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WidgetInstance, WidgetType } from "@/lib/core/widgets";
 import { uid } from "@/lib/core/util";
 import { useApp } from "@/lib/store/app";
-import { Button } from "@/components/primitives";
 import { IconChevronDown, IconChevronUp, IconGrip, IconPlus, IconTrash, IconWidgets } from "@/components/icons";
 import { widgetDef } from "./registry";
 import { loadWidgets, saveWidgets } from "./state";

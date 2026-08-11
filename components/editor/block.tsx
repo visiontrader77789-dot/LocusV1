@@ -126,9 +126,9 @@ export function EditorBlock({
 }) {
   const {
     onContentChange, onPatch, onKeyDown, onFocusBlock, onBlurBlock, onTypeChange,
-    onDelete, onDuplicate, onDragStart, onDropBlock, onDragOverBlock, onRequestFocus,
+    onDropBlock, onDragOverBlock, onRequestFocus,
     onBackspaceAtStart, onOpenLink, getFile, getBlobUrl, focusedBlockId, slashQuery,
-    slashActive, slashSelect, slashSetActive, slashClose, isDraggingOver, caretTarget,
+    slashActive, slashSelect, slashSetActive, isDraggingOver, caretTarget,
   } = handlers;
 
   const elRef = useRef<HTMLDivElement>(null);
@@ -186,7 +186,7 @@ export function EditorBlock({
       sel?.addRange(range);
     }, 0);
     return () => window.clearTimeout(t);
-  }, [caretTarget]);
+  }, [caretTarget, block.id, block.content, block.rich]);
 
   // ---- render: rich HTML (with chips) while blurred, untouched while focused
   useEffect(() => {
@@ -666,7 +666,6 @@ export function EditorBlock({
           active={slashActive}
           setActive={slashSetActive}
           onSelect={slashSelect}
-          onClose={slashClose}
         />
       )}
     </div>
