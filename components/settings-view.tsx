@@ -8,6 +8,7 @@ import { formatBytes } from "@/lib/core/util";
 import { archiveToText, LOCUS_EXTENSION } from "@/lib/core/serialize";
 import { Button, Select } from "@/components/primitives";
 import { IconShield, IconUpload } from "@/components/icons";
+import { COVER_PRESETS, COVER_DEFAULT_SUBTITLE } from "@/components/cover";
 
 function Section({ title, body, children }: { title: string; body?: string; children: React.ReactNode }) {
   return (
@@ -16,6 +17,80 @@ function Section({ title, body, children }: { title: string; body?: string; chil
       {body && <p className="mt-0.5 text-[12.5px] text-ink-2">{body}</p>}
       <div className="mt-3">{children}</div>
     </section>
+  );
+}
+
+function CoverEditor() {
+  const { settings, updateSettings, workspace } = useApp();
+  const [title, setTitle] = useState(settings?.coverTitle ?? "");
+  const [subtitle, setSubtitle] = useState(settings?.coverSubtitle ?? "");
+
+  useEffect(() => {
+    setTitle(settings?.coverTitle ?? "");
+    setSubtitle(settings?.coverSubtitle ?? "");
+  }, [settings?.coverTitle, settings?.coverSubtitle]);
+
+  const commitTitle = () => {
+    if (title !== (settings?.coverTitle ?? "")) void updateSettings({ coverTitle: title.trim() });
+  };
+  const commitSubtitle = () => {
+    if (subtitle !== (settings?.coverSubtitle ?? "")) void updateSettings({ coverSubtitle: subtitle.trim() });
+  };
+
+  return (
+    <div>
+      <div className="text-[12px] text-ink-2 mb-1.5">Preset</div>
+      <div className="flex flex-wrap items-center gap-2.5">
+        {COVER_PRESETS.map((p) => {
+          const active = settings?.coverPreset === p.id || (!settings?.coverPreset && p.id === "patina");
+          return (
+            <button
+              key={p.id}
+              type="button"
+              title={p.name}
+              aria-label={`Cover: ${p.name}`}
+              aria-pressed={active}
+              onClick={() => void updateSettings({ coverPreset: p.id })}
+              className={`h-9 w-14 rounded-lg border-2 transition-transform hover:scale-[1.04] ${
+                active ? "border-accent" : "border-line hover:border-line-strong"
+              }`}
+              style={{ background: p.background }}
+            />
+          );
+        })}
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <div className="text-[12px] text-ink-2 mb-1">Title</div>
+          <input
+            className="text-input w-full"
+            value={title}
+            placeholder={workspace?.name ?? "Workspace name"}
+            maxLength={120}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          />
+        </div>
+        <div>
+          <div className="text-[12px] text-ink-2 mb-1">Subtitle</div>
+          <input
+            className="text-input w-full"
+            value={subtitle}
+            placeholder={COVER_DEFAULT_SUBTITLE}
+            maxLength={240}
+            onChange={(e) => setSubtitle(e.target.value)}
+            onBlur={commitSubtitle}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          />
+        </div>
+      </div>
+      <p className="mt-2 text-[11.5px] text-ink-3">
+        Leave a field empty to use the default. Covers come from Locus&apos;s curated set — the layout and
+        type stay fixed.
+      </p>
+    </div>
   );
 }
 
@@ -136,6 +211,10 @@ export function SettingsView() {
               />
             </div>
           </div>
+        </Section>
+
+        <Section title="Home cover" body="The hero panel on your home screen.">
+          <CoverEditor />
         </Section>
 
         <Section title="Storage" body="Files and data live in your browser's local storage.">

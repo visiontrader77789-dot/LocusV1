@@ -151,6 +151,7 @@ const BLOCK_TYPES = new Set([
 const FILE_KINDS = new Set(["image", "document", "audio", "video", "archive", "other"]);
 const THEMES = new Set(["light", "dark", "system"]);
 const SPACINGS = new Set(["compact", "comfortable"]);
+const COVER_PRESETS = new Set(["patina", "ink", "dusk", "clay", "bark", "paper"]);
 
 function validatePage(v: unknown, _errors: string[]): Page | null {
   if (!isRecord(v)) return null;
@@ -310,12 +311,16 @@ export function parseLocusText(text: string): ImportResult {
   const settingsRaw = isRecord(raw.settings) ? raw.settings : {};
   const theme = str(settingsRaw.theme, "system");
   const spacing = str(settingsRaw.editorSpacing, "comfortable");
+  const cover = str(settingsRaw.coverPreset, "patina");
   const settings: Settings = {
     id: "settings",
     workspaceId: migratedWs.id,
     theme: THEMES.has(theme) ? (theme as Settings["theme"]) : "system",
     editorFontSize: Math.min(22, Math.max(12, Math.round(num(settingsRaw.editorFontSize, 16)))),
     editorSpacing: SPACINGS.has(spacing) ? (spacing as Settings["editorSpacing"]) : "comfortable",
+    coverPreset: COVER_PRESETS.has(cover) ? (cover as Settings["coverPreset"]) : "patina",
+    coverTitle: str(settingsRaw.coverTitle, "").slice(0, 120),
+    coverSubtitle: str(settingsRaw.coverSubtitle, "").slice(0, 240),
   };
 
   const pagesRaw = Array.isArray(raw.pages) ? raw.pages : [];

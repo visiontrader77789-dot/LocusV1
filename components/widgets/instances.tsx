@@ -16,10 +16,13 @@ export interface WidgetProps {
   setData: (patch: Record<string, string>) => void;
 }
 
-function WidgetTitle({ title, right }: { title: string; right?: ReactNode }) {
+function WidgetHeader({ title, icon, right }: { title: string; icon?: ReactNode; right?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-2 mb-2.5">
-      <h3 className="eyebrow">{title}</h3>
+    <div className="flex items-center justify-between gap-2 mb-3">
+      <h3 className="eyebrow flex items-center gap-1.5">
+        {icon && <span className="inline-flex leading-none text-ink-3">{icon}</span>}
+        <span>{title}</span>
+      </h3>
       {right}
     </div>
   );
@@ -32,18 +35,47 @@ export function ClockWidget({ instance }: WidgetProps) {
     const t = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(t);
   }, []);
-  const time = now.toLocaleTimeString(undefined, {
-    hour: "numeric", minute: "2-digit",
-    ...(instance.size === "medium" ? { second: "2-digit" } : {}),
-  });
+
+  const medium = instance.size === "medium";
+  const h12 = now.getHours() % 12 || 12;
+  const hh = String(h12).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  const ampm = now.getHours() >= 12 ? "PM" : "AM";
   const date = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const tz = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+    } catch {
+      return "";
+    }
+  }, []);
+
   return (
     <div>
-      <WidgetTitle title="Clock" />
-      <div className={`font-display font-semibold tracking-tight text-ink ${instance.size === "medium" ? "text-[38px] leading-none" : "text-[28px] leading-none"}`}>
-        {time}
+      <WidgetHeader title="Clock" icon={<IconClock size={12} />} />
+      <div className="relative">
+        <span className="clock-dial" aria-hidden="true" />
+        <span className="clock-glow" aria-hidden="true" />
+        <span className="clock-sheen" aria-hidden="true" />
+        <div className="relative">
+          <div
+            key={`${hh}:${mm}`}
+            className={`clock-time-row ${medium ? "text-[40px] sm:text-[46px]" : "text-[30px] sm:text-[33px]"}`}
+          >
+            <span className="clock-hh">{hh}</span>
+            <span className="clock-colon">:</span>
+            <span className="clock-mm">{mm}</span>
+            {medium && (
+              <span key={ss} className="clock-sec">{ss}</span>
+            )}
+            <span className="clock-ampm">{ampm}</span>
+          </div>
+          <div className="clock-rule" aria-hidden="true" />
+          <p className="clock-date">{date}</p>
+          {medium && tz && <p className="clock-tz">{tz}</p>}
+        </div>
       </div>
-      {instance.size === "medium" && <p className="mt-2 text-[13px] text-ink-2">{date}</p>}
     </div>
   );
 }
@@ -70,7 +102,7 @@ export function CalendarWidget(_props: WidgetProps) {
   const weekday = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
   return (
     <div>
-      <WidgetTitle title={monthName} />
+      <WidgetHeader title={monthName} icon={<IconCalendar size={12} />} />
       <div className="grid grid-cols-7 gap-y-1 text-center">
         {weekday.map((d) => (
           <span key={d} className="font-mono text-[9.5px] text-ink-3 pb-1">{d}</span>
@@ -117,7 +149,7 @@ export function PomodoroWidget({ instance }: WidgetProps) {
   const size = instance.size === "medium" ? "text-[42px]" : "text-[32px]";
   return (
     <div>
-      <WidgetTitle title="Pomodoro" />
+      <WidgetHeader title="Pomodoro" icon={<IconHourglass size={12} />} />
       <div className="flex items-baseline gap-2">
         <span className={`font-display font-semibold tracking-tight tabular-nums ${size}`}>
           {mm}:{ss}
@@ -127,14 +159,14 @@ export function PomodoroWidget({ instance }: WidgetProps) {
       <div className="mt-3 flex items-center gap-1.5">
         <button
           type="button"
-          className="h-7 px-3 rounded-[6px] text-[12px] font-medium bg-accent text-accent-ink hover:bg-accent-hi transition-colors"
+          className="h-7 px-3 rounded-[8px] text-[12px] font-medium bg-accent text-accent-ink hover:bg-accent-hi transition-colors"
           onClick={() => setRunning((r) => !r)}
         >
           {running ? "Pause" : "Start"}
         </button>
         <button
           type="button"
-          className="h-7 px-3 rounded-[6px] text-[12px] font-medium border border-line-strong text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
+          className="h-7 px-3 rounded-[8px] text-[12px] font-medium border border-line-strong text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors"
           onClick={() => { setRunning(false); setLeft(total); }}
         >
           Reset
@@ -149,7 +181,7 @@ export function QuickNoteWidget({ instance, setData }: WidgetProps) {
   const text = instance.data.text ?? "";
   return (
     <div>
-      <WidgetTitle title="Quick note" />
+      <WidgetHeader title="Quick note" icon={<IconPen size={12} />} />
       <textarea
         aria-label="Quick note"
         value={text}
@@ -172,8 +204,9 @@ export function TodayTasksWidget(_props: WidgetProps) {
   const totalOpen = open.length;
   return (
     <div>
-      <WidgetTitle
+      <WidgetHeader
         title="Today's tasks"
+        icon={<IconTasks size={12} />}
         right={
           <button type="button" className="text-[12px] text-ink-2 hover:text-ink" onClick={() => navigate({ name: "tasks" })}>
             View all
@@ -205,8 +238,9 @@ export function FavoritesWidget(_props: WidgetProps) {
   const total = favorites.pages.length + favorites.tasks.length + favorites.files.length;
   return (
     <div>
-      <WidgetTitle
+      <WidgetHeader
         title="Favorites"
+        icon={<IconStar size={12} />}
         right={
           <button type="button" className="text-[12px] text-ink-2 hover:text-ink" onClick={() => navigate({ name: "favorites" })}>
             View all
@@ -250,7 +284,7 @@ export function RecentPagesWidget(_props: WidgetProps) {
   const pages = recentPages.slice(0, 4);
   return (
     <div>
-      <WidgetTitle title="Recent pages" />
+      <WidgetHeader title="Recent pages" icon={<IconPage size={12} />} />
       {pages.length === 0 ? (
         <p className="text-[13px] text-ink-2">Your recently edited pages show up here.</p>
       ) : (
@@ -288,7 +322,7 @@ export function CountdownWidget({ instance, setData }: WidgetProps) {
   }, [target]);
   return (
     <div>
-      <WidgetTitle
+      <WidgetHeader
         title="Countdown"
         right={
           <button
@@ -350,8 +384,11 @@ export function StickyNoteWidget({ instance, setData }: WidgetProps) {
   const text = instance.data.text ?? "";
   return (
     <div>
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <h3 className="eyebrow text-ink-2">Sticky note</h3>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h3 className="eyebrow flex items-center gap-1.5 text-ink-2">
+          <span className="inline-flex leading-none text-ink-3"><IconNoteSticky size={12} /></span>
+          <span>Sticky note</span>
+        </h3>
         <div className="flex items-center gap-1">
           {Object.entries(STICKY_COLORS).map(([name, hex]) => (
             <button
@@ -405,7 +442,7 @@ export function QuoteWidget({ instance, setData }: WidgetProps) {
   };
   return (
     <div>
-      <WidgetTitle
+      <WidgetHeader
         title="Focus"
         right={
           <button type="button" className="icon-btn tooltip" aria-label="Show another quote" title="Another" onClick={next}>
@@ -442,14 +479,14 @@ export function QuickActionsWidget(_props: WidgetProps) {
   ];
   return (
     <div>
-      <WidgetTitle title="Quick actions" />
+      <WidgetHeader title="Quick actions" icon={<IconPlus size={12} />} />
       <div className="grid grid-cols-2 gap-1.5">
         {actions.map((a) => (
           <button
             key={a.label}
             type="button"
             onClick={a.run}
-            className="flex items-center gap-2 px-2.5 py-2 rounded-[6px] border border-line text-[12.5px] font-medium text-ink hover:bg-surface-2 hover:border-line-strong transition-colors"
+            className="flex items-center gap-2 px-2.5 py-2 rounded-[8px] border border-line text-[12.5px] font-medium text-ink hover:bg-surface-2 hover:border-line-strong transition-colors"
           >
             <span className="text-ink-3">{a.icon}</span>
             {a.label}
@@ -474,10 +511,10 @@ export function StatsWidget(_props: WidgetProps) {
   ];
   return (
     <div>
-      <WidgetTitle title="Productivity" />
+      <WidgetHeader title="Productivity" icon={<IconChart size={12} />} />
       <div className="grid grid-cols-2 gap-1.5">
         {items.map((s) => (
-          <div key={s.label} className="flex items-center gap-2.5 rounded-[6px] border border-line px-3 py-2.5">
+          <div key={s.label} className="flex items-center gap-2.5 rounded-[8px] border border-line px-3 py-2.5">
             {s.icon}
             <div>
               <div className="font-display font-semibold text-[17px] leading-none tabular-nums">{s.value}</div>

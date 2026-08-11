@@ -9,17 +9,10 @@ import { EmptyState } from "@/components/primitives";
 import { LocusMark } from "@/components/mark";
 import { IconFiles, IconPage, IconPlus, IconSearch, IconStar, IconTasks, IconUpload } from "@/components/icons";
 import { DashboardWidgets } from "@/components/widgets/grid";
-
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 5) return "Late night";
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
-}
+import { Cover } from "@/components/cover";
 
 export function Dashboard() {
-  const { workspace, recentPages, favorites, tasks, files, createPage, createTask, addFiles, pushNotice } = useApp();
+  const { recentPages, favorites, tasks, files, createPage, createTask, addFiles, pushNotice } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const openTasks = tasks.filter((t) => !t.completed).slice(0, 5);
@@ -54,26 +47,16 @@ export function Dashboard() {
   ];
 
   return (
-    <div className="max-w-[860px] mx-auto px-4 sm:px-6 py-8">
-      <header className="mb-7">
-        <p className="font-mono text-[11px] text-ink-3 uppercase tracking-[0.12em]">
-          {workspace?.name ?? "Workspace"}
-        </p>
-        <h1 className="mt-1 font-display font-semibold tracking-tight text-[26px] leading-tight">
-          {greeting()}.
-        </h1>
-        <p className="mt-1 text-[13.5px] text-ink-2">
-          Everything here lives on this device. Nothing leaves it.
-        </p>
-      </header>
+    <div className="max-w-[920px] mx-auto px-4 sm:px-6 pt-6 pb-16">
+      <Cover />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-12">
         {quickActions.map((qa) => (
           <button
             key={qa.label}
             type="button"
             onClick={qa.run}
-            className="panel flex flex-col items-start gap-2.5 px-3.5 py-3 text-left hover:border-line-strong hover:bg-surface-2 transition-colors"
+            className="panel flex flex-col items-start gap-2.5 px-4 py-4 text-left hover:border-line-strong hover:bg-surface-2 transition-colors"
           >
             <span className="text-ink-3">{qa.icon}</span>
             <span className="text-[13px] font-medium">{qa.label}</span>
@@ -85,8 +68,8 @@ export function Dashboard() {
       <DashboardWidgets />
 
       {recentPages.length > 0 && (
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-2">
+        <section className="mb-12">
+          <div className="flex items-center justify-between mb-3">
             <h2 className="eyebrow">Recent pages</h2>
             <button
               type="button"
@@ -97,13 +80,13 @@ export function Dashboard() {
               <span>New page</span>
             </button>
           </div>
-          <div className="grid sm:grid-cols-2 gap-2">
+          <div className="grid sm:grid-cols-2 gap-2.5">
             {recentPages.slice(0, 4).map((page) => (
               <button
                 key={page.id}
                 type="button"
                 onClick={() => navigate({ name: "page", id: page.id })}
-                className="panel flex items-center gap-3 px-3.5 py-3 text-left hover:border-line-strong hover:bg-surface-2 transition-colors"
+                className="panel flex items-center gap-3 px-4 py-3.5 text-left hover:border-line-strong hover:bg-surface-2 transition-colors"
               >
                 <span className="w-8 h-8 shrink-0 flex items-center justify-center rounded-[8px] bg-surface-2 border border-line text-[16px]">
                   {page.icon ? <span>{page.icon}</span> : <IconPage size={15} className="text-ink-3" />}
@@ -121,9 +104,9 @@ export function Dashboard() {
         </section>
       )}
 
-      <div className="grid md:grid-cols-2 gap-8 mb-8">
+      <div className="grid md:grid-cols-2 gap-10 mb-12">
         <section>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-3">
             <h2 className="eyebrow">Open tasks</h2>
             <button
               type="button"
@@ -168,7 +151,7 @@ export function Dashboard() {
         </section>
 
         <section>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-3">
             <h2 className="eyebrow">Favorites</h2>
             <button
               type="button"

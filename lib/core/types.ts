@@ -140,12 +140,27 @@ export interface FileRef {
 export type ThemeSetting = "light" | "dark" | "system";
 export type EditorSpacing = "compact" | "comfortable";
 
+/** Curated cover presets shipped with Locus. */
+export type CoverPresetId =
+  | "patina"
+  | "ink"
+  | "dusk"
+  | "clay"
+  | "bark"
+  | "paper";
+
 export interface Settings {
   id: ID;
   workspaceId: ID;
   theme: ThemeSetting;
   editorFontSize: number;
   editorSpacing: EditorSpacing;
+  /** Selected cover preset. Absent = default preset. */
+  coverPreset?: CoverPresetId;
+  /** Cover title. Empty = falls back to the workspace name. */
+  coverTitle?: string;
+  /** Cover subtitle. Empty = falls back to the default line. */
+  coverSubtitle?: string;
 }
 
 export interface PageTreeNode {
@@ -266,5 +281,8 @@ export function defaultSettings(workspaceId: ID): Settings {
     theme: "system",
     editorFontSize: 16,
     editorSpacing: "comfortable",
+    coverPreset: "patina",
+    coverTitle: "",
+    coverSubtitle: "",
   };
 }
