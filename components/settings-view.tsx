@@ -8,6 +8,7 @@ import { formatBytes } from "@/lib/core/util";
 import { archiveToText, LOCUS_EXTENSION } from "@/lib/core/serialize";
 import { Button, Select } from "@/components/primitives";
 import { IconShield, IconUpload } from "@/components/icons";
+import { KeyboardShortcutsPanel } from "@/components/shortcuts-panel";
 import { COVER_PRESETS, COVER_DEFAULT_SUBTITLE } from "@/components/cover";
 
 function Section({ title, body, children }: { title: string; body?: string; children: React.ReactNode }) {
@@ -216,6 +217,8 @@ export function SettingsView() {
         <Section title="Home cover" body="The hero panel on your home screen.">
           <CoverEditor />
         </Section>
+
+        <KeyboardShortcutsPanel />
 
         <Section title="Storage" body="Files and data live in your browser's local storage.">
           {usage && usage.quota > 0 && (

@@ -406,7 +406,7 @@ export function parseLocusText(text: string): ImportResult {
   // Break cycles and drop references to unknown folders.
   const resolveFolder = (id: string | null): string | null => {
     if (!id || !folderIds.has(id)) return null;
-    let seen = new Set<string>();
+    const seen = new Set<string>();
     let cur = id;
     while (cur) {
       if (seen.has(cur)) return null;

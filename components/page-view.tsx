@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "@/lib/store/app";
 import { navigate } from "@/lib/store/router";
+import { onRequestPageRename } from "@/lib/store/events";
 import { collectDescendants } from "@/lib/core/tree";
 import type { Page } from "@/lib/core/types";
 import { Editor } from "@/components/editor/editor";
@@ -22,8 +23,18 @@ function PageHeader({ page }: { page: Page }) {
   const [title, setTitle] = useState(page.title);
   const [iconPicker, setIconPicker] = useState(false);
   const savedRef = useRef(page.title);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setTitle(page.title); }, [page.title]);
+
+  // "Rename page" shortcut (F2): focus and select the whole title.
+  useEffect(() => onRequestPageRename(() => {
+    const el = titleRef.current;
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  }), []);
 
   const commitTitle = () => {
     const v = title.trim();
@@ -78,6 +89,7 @@ function PageHeader({ page }: { page: Page }) {
 
         <div className="flex-1 min-w-0">
           <input
+            ref={titleRef}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={commitTitle}

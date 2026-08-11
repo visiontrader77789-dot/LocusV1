@@ -7,6 +7,7 @@ import { openPalette } from "@/lib/store/events";
 import { relativeTime, isoDate, isOverdue } from "@/lib/core/util";
 import { EmptyState } from "@/components/primitives";
 import { LocusMark } from "@/components/mark";
+import { formatShortcut } from "@/lib/shortcuts/platform";
 import { IconFiles, IconPage, IconPlus, IconSearch, IconStar, IconTasks, IconUpload } from "@/components/icons";
 import { DashboardWidgets } from "@/components/widgets/grid";
 import { Cover } from "@/components/cover";
@@ -23,11 +24,13 @@ export function Dashboard() {
     {
       label: "New page",
       icon: <IconPage size={15} />,
+      kbd: formatShortcut({ key: "n", mod: true }),
       run: () => void createPage(null).then((p) => navigate({ name: "page", id: p.id })),
     },
     {
       label: "New task",
       icon: <IconTasks size={15} />,
+      kbd: formatShortcut({ key: "n", mod: true, shift: true }),
       run: () => {
         const title = window.prompt("Task title");
         if (title?.trim()) void createTask(title.trim()).then(() => pushNotice("success", "Task added"));
@@ -37,7 +40,7 @@ export function Dashboard() {
       label: "Search everything",
       icon: <IconSearch size={15} />,
       run: () => openPalette(),
-      kbd: "Ctrl K",
+      kbd: formatShortcut({ key: "k", mod: true }),
     },
     {
       label: "Upload a file",

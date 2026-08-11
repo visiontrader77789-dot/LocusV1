@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/lib/store/app";
 import { navigate, type Route } from "@/lib/store/router";
+import { onSidebarToggle } from "@/lib/store/events";
 import { buildWorkspaceTree, collectDescendants, folderAncestry, sortFolders, sortPages } from "@/lib/core/tree";
+import { formatShortcut } from "@/lib/shortcuts/platform";
 import type { Folder, ID, Page, WorkspaceNode } from "@/lib/core/types";
 import { LocusMark } from "@/components/mark";
 import { Menu, MenuItem, MenuSeparator } from "@/components/primitives";
@@ -608,6 +610,9 @@ export function Sidebar({
     } catch { /* ignore */ }
   }, [collapsed]);
 
+  // "Toggle sidebar" shortcut.
+  useEffect(() => onSidebarToggle(() => setCollapsed((c) => !c)), []);
+
   const toggleExpand = useCallback((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -871,8 +876,8 @@ export function Sidebar({
             <button
               type="button"
               aria-label="New folder"
-              data-tip="New folder"
-              className="icon-btn !w-6 !h-6"
+              data-tip={`New folder (${formatShortcut({ key: "f", mod: true, alt: true })})`}
+              className="icon-btn tooltip !w-6 !h-6"
               onClick={() => void createFolder(null)}
             >
               <IconFolderPlus size={13} />
@@ -880,8 +885,8 @@ export function Sidebar({
             <button
               type="button"
               aria-label="New page"
-              data-tip="New page"
-              className="icon-btn !w-6 !h-6"
+              data-tip={`New page (${formatShortcut({ key: "n", mod: true })})`}
+              className="icon-btn tooltip !w-6 !h-6"
               onClick={() => void handleCreatePage(null)}
             >
               <IconPlus size={13} />

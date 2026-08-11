@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useApp } from "@/lib/store/app";
 import { navigate, type Route } from "@/lib/store/router";
-import { onSidebarOpen, openPalette } from "@/lib/store/events";
+import { onSidebarOpen } from "@/lib/store/events";
+import { ShortcutLayer } from "@/components/shortcut-layer";
 import { Topbar } from "@/components/topbar";
 import { Sidebar } from "@/components/sidebar";
 import { Dashboard } from "@/components/dashboard";
@@ -95,19 +96,9 @@ export function AppShell({ route }: { route: Route }) {
     setDrawerOpen(false);
   }, [route]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        openPalette();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   return (
     <div className="h-screen flex flex-col bg-paper">
+      <ShortcutLayer route={route} />
       <Topbar route={route} />
       <div className="flex flex-1 min-h-0">
         <div className="hidden lg:flex">

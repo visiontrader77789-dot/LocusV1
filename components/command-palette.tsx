@@ -5,7 +5,9 @@ import { useApp } from "@/lib/store/app";
 import { searchIndex, groupResults, type SearchResult } from "@/lib/core/search";
 import { navigate } from "@/lib/store/router";
 import { closePalette, onPaletteClose, onPaletteOpen } from "@/lib/store/events";
-import { IconFiles, IconFolder, IconPage, IconSearch, IconTasks, IconUpload, IconX } from "@/components/icons";
+import { requestShortcutsHelpFocus } from "@/lib/shortcuts/registry";
+import { formatShortcut } from "@/lib/shortcuts/platform";
+import { IconFiles, IconFolder, IconInfo, IconPage, IconSearch, IconTasks, IconUpload, IconX } from "@/components/icons";
 import { LocusMark } from "@/components/mark";
 
 type Mode = "search" | "task" | "page";
@@ -23,9 +25,9 @@ export function CommandPalette() {
   const fileRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => onPaletteOpen(() => {
+  useEffect(() => onPaletteOpen((mode) => {
     setOpen(true);
-    setMode("search");
+    setMode(mode);
     setQuery("");
     setActive(0);
   }), []);
@@ -139,11 +141,13 @@ export function CommandPalette() {
     {
       label: "New page",
       icon: <IconPage size={15} />,
+      kbd: formatShortcut({ key: "n", mod: true }),
       run: () => { setMode("page"); setQuery(""); inputRef.current?.focus(); },
     },
     {
       label: "New task",
       icon: <IconTasks size={15} />,
+      kbd: formatShortcut({ key: "n", mod: true, shift: true }),
       run: () => { setMode("task"); setQuery(""); inputRef.current?.focus(); },
     },
     {
@@ -154,7 +158,14 @@ export function CommandPalette() {
     {
       label: "Open settings",
       icon: <IconFiles size={15} />,
+      kbd: formatShortcut({ key: ",", mod: true }),
       run: () => { setOpen(false); closePalette(); navigate({ name: "settings" }); },
+    },
+    {
+      label: "Keyboard shortcuts",
+      icon: <IconInfo size={15} />,
+      kbd: formatShortcut({ key: "/", mod: true }),
+      run: () => { setOpen(false); closePalette(); requestShortcutsHelpFocus(); navigate({ name: "settings" }); },
     },
   ];
 
@@ -213,7 +224,8 @@ export function CommandPalette() {
                   onClick={qa.run}
                 >
                   <span className="text-ink-3">{qa.icon}</span>
-                  {qa.label}
+                  <span className="flex-1 text-left">{qa.label}</span>
+                  {qa.kbd && <span className="font-mono text-[10px] text-ink-3 shrink-0">{qa.kbd}</span>}
                 </button>
               ))}
             </div>

@@ -4,6 +4,7 @@ import { useApp } from "@/lib/store/app";
 import { openPalette } from "@/lib/store/events";
 import type { Route } from "@/lib/store/router";
 import { folderAncestry, pathSegments } from "@/lib/core/tree";
+import { formatShortcut, ariaKeyshortcuts } from "@/lib/shortcuts/platform";
 import { LocusMark } from "@/components/mark";
 import { IconCheck, IconMenu, IconSearch, IconSettings } from "@/components/icons";
 import { navigate } from "@/lib/store/router";
@@ -115,20 +116,21 @@ export function Topbar({ route }: { route: Route }) {
 
       <button
         type="button"
-        onClick={openPalette}
+        onClick={() => openPalette()}
+        aria-keyshortcuts={ariaKeyshortcuts([{ key: "k", mod: true }])}
         className="hidden sm:inline-flex items-center gap-2 h-7 px-2.5 rounded-[6px] border border-line bg-surface text-ink-2 text-[12px] hover:border-line-strong hover:text-ink transition-colors"
       >
         <IconSearch size={13} />
         <span className="hidden md:inline">Search</span>
         <span className="font-mono text-[10px] text-ink-3 ml-1">
-          {navigator.platform?.includes("Mac") ? "⌘K" : "Ctrl K"}
+          {formatShortcut({ key: "k", mod: true })}
         </span>
       </button>
       <button
         type="button"
         className="sm:hidden icon-btn"
         aria-label="Search"
-        onClick={openPalette}
+        onClick={() => openPalette()}
       >
         <IconSearch size={16} />
       </button>
