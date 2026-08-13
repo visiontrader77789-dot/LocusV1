@@ -93,3 +93,18 @@ export function tokenize(s: string): string[] {
 export function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/**
+ * Validate a link target typed into the link dialog.
+ * Bare text (a page title) and http(s)/mailto/ftp URLs are allowed;
+ * any other scheme (e.g. javascript:, data:) is rejected for safety.
+ * Empty string is allowed (means "remove the link").
+ */
+export function isValidLinkTarget(value: string): boolean {
+  const v = value.trim();
+  if (!v) return true;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(v)) {
+    return /^(https?|mailto|ftp):/i.test(v);
+  }
+  return true;
+}

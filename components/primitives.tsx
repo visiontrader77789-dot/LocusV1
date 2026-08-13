@@ -185,21 +185,26 @@ export function MenuItem({
   danger,
   active,
   leading,
+  disabled,
 }: {
   children: ReactNode;
   onClick?: () => void;
   danger?: boolean;
   active?: boolean;
   leading?: ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
       onClick={onClick}
+      disabled={disabled}
       className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] text-left rounded-[5px] transition-colors ${
         danger ? "text-danger hover:bg-danger-soft" : "text-ink hover:bg-surface-2"
-      } ${active ? "bg-accent-soft text-accent-hi" : ""}`}
+      } ${active ? "bg-accent-soft text-accent-hi" : ""} ${
+        disabled ? "opacity-40 pointer-events-none" : ""
+      }`}
     >
       {leading && <span className="text-ink-3 shrink-0">{leading}</span>}
       <span className="flex-1 truncate">{children}</span>

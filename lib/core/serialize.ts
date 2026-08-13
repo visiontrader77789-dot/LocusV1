@@ -12,6 +12,7 @@
 import type {
   Block,
   BlockType,
+  CalloutType,
   FileRef,
   Folder,
   InlineSpan,
@@ -21,7 +22,7 @@ import type {
   Workspace,
   LocusFileEntry,
 } from "./types";
-import { SCHEMA_VERSION } from "./types";
+import { CALLOUT_TYPES, SCHEMA_VERSION } from "./types";
 import { migrateBlocks, migrateFolders, migratePages, migrateTasks, migrateWorkspace } from "./migration";
 import { uid } from "./util";
 
@@ -149,10 +150,10 @@ function idStr(v: unknown, fallback: () => string): string {
 const BLOCK_TYPES = new Set([
   "paragraph", "heading1", "heading2", "heading3", "bulletList",
   "numberedList", "todoList", "quote", "code", "divider", "image",
-  "file", "table", "math",
+  "file", "table", "math", "callout",
 ]);
 
-const HIGHLIGHT_COLORS = new Set(["yellow", "green", "pink", "blue"]);
+const HIGHLIGHT_COLORS = new Set(["yellow", "green", "pink", "blue", "orange", "purple"]);
 
 const FILE_KINDS = new Set(["image", "document", "audio", "video", "archive", "other"]);
 const THEMES = new Set(["light", "dark", "system"]);
@@ -243,6 +244,8 @@ function validateBlock(v: unknown, errors: string[]): Block | null {
       .map((r) => (r as unknown[]).slice(0, 10).map((c) => str(c, "").slice(0, 400)));
   }
   const content = str(v.content, "").slice(0, 50_000);
+  const calloutTypeRaw = str(v.calloutType);
+  const language = str(v.language).slice(0, 60);
   return {
     id: idStr(v.id, uid),
     pageId,
@@ -256,6 +259,8 @@ function validateBlock(v: unknown, errors: string[]): Block | null {
     order: num(v.order, num(v.createdAt)),
     createdAt: num(v.createdAt),
     updatedAt: num(v.updatedAt),
+    calloutType: CALLOUT_TYPES.includes(calloutTypeRaw as CalloutType) ? (calloutTypeRaw as CalloutType) : undefined,
+    language: language || undefined,
   };
 }
 
@@ -426,8 +431,8 @@ export function parseLocusText(text: string): ImportResult {
   }
   const migratedFolders = migrateFolders(folders);
 
-  if (pages.length === 0) {
-    errors.push("This backup contains no pages.");
+  if (pages.length === 0 && migratedTasks.length === 0 && files.length === 0 && migratedFolders.length === 0) {
+    errors.push("This backup is empty.");
   }
 
   const data: LocusArchive = {

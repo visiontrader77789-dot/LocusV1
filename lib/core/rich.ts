@@ -20,7 +20,7 @@ export type { InlineSpan, RichMark };
 const WIKI_LINK_RE = /\[\[([^\[\]]{1,120})\]\]/g;
 const MATH_INLINE_RE = /\$([^$\n]{1,240})\$/g;
 
-const HIGHLIGHT_COLORS = new Set<HighlightColor>(["yellow", "green", "pink", "blue"]);
+const HIGHLIGHT_COLORS = new Set<HighlightColor>(["yellow", "green", "pink", "blue", "orange", "purple"]);
 
 /**
  * Render LaTeX to HTML using local KaTeX. Never throws on bad input —
@@ -44,7 +44,7 @@ export function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function escapeAttr(s: string): string {
+export function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, "&quot;");
 }
 
@@ -276,14 +276,14 @@ export function richHtml(content: string, spans?: InlineSpan[] | null, chips = t
     }
   }
   if (normal.length === 0 && chipRanges.length === 0 && mathRanges.length === 0) {
-    return escapeHtml(content);
+    return escapeHtml(content).replace(/\n/g, "<br>");
   }
   const segs = buildSegments(content, normal, chipRanges, mathRanges);
   return segs
     .map((s) => {
       if (s.chip) return `<span class="link-chip" data-link="${escapeAttr(s.chip)}">${escapeHtml(s.chip)}</span>`;
       if (s.math !== undefined) return `<span class="math-inline" data-math="${escapeAttr(s.math)}">${renderMath(s.math)}</span>`;
-      return wrapSeg(content.slice(s.from, s.to), s.marks);
+      return wrapSeg(content.slice(s.from, s.to), s.marks).replace(/\n/g, "<br>");
     })
     .join("");
 }
@@ -313,7 +313,7 @@ function marksFromElement(el: Element, root: Element): RichMark {
     const tag = node.tagName;
     if (MARK_TAGS[tag]) marks[MARK_TAGS[tag]] = true;
     else if (tag === "MARK") {
-      const m = /hl-(yellow|green|pink|blue)/.exec(node.className || "");
+      const m = /hl-(yellow|green|pink|blue|orange|purple)/.exec(node.className || "");
       if (m) marks.highlight = m[1] as HighlightColor;
     } else if (tag === "A") {
       const link = node.getAttribute("data-link") || node.getAttribute("href") || "";
@@ -333,34 +333,124 @@ function marksFromElement(el: Element, root: Element): RichMark {
 
 /**
  * Read a contentEditable element into plain text + inline spans in one pass,
- * so offsets always line up with `content`.
+ * so offsets always line up with `content`. Soft line breaks (`<br>`) are
+ * preserved as `\n` characters so Shift+Enter breaks survive a reload.
  */
+/**
+ * Normalize editor text read from the DOM. Browsers encode a trailing space
+ * typed at the end of a contentEditable line as U+00A0 (NBSP) so it survives
+ * re-renders; flatten it to a regular space so markdown matching and rich-text
+ * parsing see what the user actually typed.
+ */
+export function normalizeEditorText(content: string): string {
+  return content.replace(/\u00a0/g, " ");
+}
+
 export function readBlock(el: HTMLElement): { content: string; spans: InlineSpan[] } {
   const root = el;
   const parts: string[] = [];
   const spans: InlineSpan[] = [];
   let offset = 0;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(n: Node) {
-      const p = n.parentElement;
-      if (p && p.classList.contains("link-chip")) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  let node = walker.nextNode();
-  while (node) {
-    const text = (node as Text).textContent ?? "";
-    if (text.length > 0) {
-      const marks = marksFromElement(node.parentElement as Element, root);
-      if (hasMarks(marks)) {
-        spans.push({ from: offset, to: offset + text.length, ...marks });
-      }
-      parts.push(text);
-      offset += text.length;
+  const emit = (text: string, node: Element | null) => {
+    if (text.length === 0) return;
+    if (node) {
+      const marks = marksFromElement(node, root);
+      if (hasMarks(marks)) spans.push({ from: offset, to: offset + text.length, ...marks });
     }
-    node = walker.nextNode();
-  }
-  return { content: parts.join(""), spans: mergeSpans(spans) };
+    parts.push(text);
+    offset += text.length;
+  };
+  const walk = (node: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      emit(node.textContent ?? "", node.parentElement);
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const eln = node as Element;
+      if (eln.classList.contains("link-chip")) return; // chips are unwrapped while editing
+      if (eln.tagName === "BR") {
+        emit("\n", eln);
+        return;
+      }
+      for (const child of Array.from(eln.childNodes)) walk(child);
+    }
+  };
+  for (const child of Array.from(el.childNodes)) walk(child);
+  return { content: normalizeEditorText(parts.join("")), spans: mergeSpans(spans) };
+}
+
+// ---------------------------------------------------------------------------
+// Paste sanitisation: untrusted HTML -> safe inline HTML the editor can render
+// ---------------------------------------------------------------------------
+
+const PASTE_DROP_TAGS = new Set([
+  "script", "style", "iframe", "object", "embed", "link", "meta", "base",
+  "form", "input", "button", "select", "textarea", "svg", "canvas", "video",
+  "audio", "applet", "param", "template", "noscript", "frame", "frameset",
+]);
+
+const PASTE_BLOCK_TAGS = new Set([
+  "P", "DIV", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "UL", "OL",
+  "TABLE", "TR", "SECTION", "ARTICLE", "HEADER", "FOOTER", "MAIN", "ASIDE",
+]);
+
+/**
+ * Strip untrusted HTML from the clipboard down to the small subset the editor
+ * supports (bold/italic/underline/strike/code/inline-code/marks/links + soft
+ * breaks). Returns safe HTML ready for `execCommand("insertHTML", …)`.
+ * Browser-only (uses DOMParser).
+ */
+export function sanitizePasteHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const walkChildren = (parent: Element): string => {
+    let out = "";
+    for (const node of Array.from(parent.childNodes)) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        out += escapeHtml(node.textContent ?? "");
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        out += walk(node as Element);
+      }
+    }
+    return out;
+  };
+  const walk = (node: Element): string => {
+    const tag = node.tagName;
+    if (PASTE_DROP_TAGS.has(tag.toLowerCase())) return "";
+    if (tag === "BR") return "<br>";
+    if (tag === "A") {
+      const href = node.getAttribute("href") ?? "";
+      const safe = /^(https?:\/\/|mailto:)/i.test(href) ? href : "";
+      const inner = walkChildren(node);
+      return safe && inner
+        ? `<a class="inline-link" data-link="${escapeAttr(safe)}" data-external="${/^https?:/i.test(safe) ? "true" : "false"}" href="${escapeAttr(safe)}" target="_blank" rel="noopener noreferrer">${inner}</a>`
+        : inner;
+    }
+    if (tag === "MARK") {
+      const m = /hl-(yellow|green|pink|blue|orange|purple)/.exec(node.className || "");
+      const inner = walkChildren(node);
+      return m ? `<mark class="${m[1]}">${inner}</mark>` : inner;
+    }
+    if (tag === "CODE" && !node.closest("pre")) {
+      return `<code class="editor-inline-code">${walkChildren(node)}</code>`;
+    }
+    if (tag === "SPAN") {
+      const style = node.getAttribute("style") ?? "";
+      let out = walkChildren(node);
+      if (/\bfont-style\s*:\s*italic/i.test(style)) out = `<i>${out}</i>`;
+      if (/\bfont-weight\s*:\s*(bold|[5-9]00)/i.test(style)) out = `<b>${out}</b>`;
+      if (/text-decoration\s*:[^;]*underline/i.test(style)) out = `<u>${out}</u>`;
+      if (/text-decoration\s*:[^;]*line-through/i.test(style)) out = `<s>${out}</s>`;
+      return out;
+    }
+    if (tag === "STRONG") return `<b>${walkChildren(node)}</b>`;
+    if (tag === "EM") return `<i>${walkChildren(node)}</i>`;
+    if (tag === "STRIKE" || tag === "DEL") return `<s>${walkChildren(node)}</s>`;
+    if (tag === "CODE") return `<code class="editor-inline-code">${walkChildren(node)}</code>`;
+    if (["B", "I", "U", "SUB", "SUP", "SMALL"].includes(tag)) {
+      return `<${tag.toLowerCase()}>${walkChildren(node)}</${tag.toLowerCase()}>`;
+    }
+    const inner = walkChildren(node);
+    return PASTE_BLOCK_TAGS.has(tag) ? `${inner}<br>` : inner;
+  };
+  return walkChildren(doc.body).replace(/(<br>)+$/, "");
 }
 
 // ---------------------------------------------------------------------------
@@ -382,6 +472,8 @@ const MARKDOWN_PATTERNS: Array<{ re: RegExp; type: BlockType; checked?: boolean 
   { re: /^> $/, type: "quote" },
   { re: /^- \[x\] $/, type: "todoList", checked: true },
   { re: /^- \[ \] $/, type: "todoList", checked: false },
+  { re: /^\[\] $/, type: "todoList", checked: false },
+  { re: /^\[ \] $/, type: "todoList", checked: false },
   { re: /^\d+\. $/, type: "numberedList" },
 ];
 

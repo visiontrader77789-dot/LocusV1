@@ -3,8 +3,8 @@
  * The storage layer keeps a schemaVersion per workspace; every read runs
  * through `migrate` so old on-disk data is upgraded in place.
  */
-import { SCHEMA_VERSION } from "./types";
-import type { Block, Folder, Page, Task, Workspace } from "./types";
+import { CALLOUT_TYPES, SCHEMA_VERSION } from "./types";
+import type { Block, CalloutType, Folder, Page, Task, Workspace } from "./types";
 
 const MIGRATIONS: Array<(d: unknown) => unknown> = [
   // v0 -> v1: initial release schema. No-op placeholder that records intent.
@@ -60,6 +60,8 @@ export function migrateBlocks(blocks: Block[]): Block[] {
     indent: Number(b.indent) || 0,
     attachmentId: b.attachmentId ?? null,
     rows: Array.isArray(b.rows) ? b.rows : [],
+    calloutType: b.type === "callout" ? (CALLOUT_TYPES.includes(b.calloutType as CalloutType) ? (b.calloutType as CalloutType) : "note") : undefined,
+    language: b.type === "code" ? (typeof b.language === "string" ? b.language : "") : undefined,
     order: typeof b.order === "number" ? b.order : b.createdAt,
   }));
 }

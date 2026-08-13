@@ -60,6 +60,14 @@ export class MemoryBackend implements StorageBackend {
     this.blobs.delete(key);
   }
 
+  async getAllBlobKeys(): Promise<string[]> {
+    return [...this.blobs.keys()];
+  }
+
+  async clearBlobs(): Promise<void> {
+    this.blobs.clear();
+  }
+
   async estimate(): Promise<StorageEstimate> {
     let usage = 0;
     for (const blob of this.blobs.values()) usage += blob.size;

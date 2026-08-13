@@ -174,6 +174,50 @@ export class IdbBackend implements StorageBackend {
     await this.commit(store.delete(key), tx);
   }
 
+  async getAllBlobKeys(): Promise<string[]> {
+    if (!this.available) return [];
+    try {
+      const [tx, store] = await this.tx(BLOB_STORE, "readonly");
+      const out: string[] = [];
+      const req = store.openKeyCursor();
+      await new Promise<void>((resolve, reject) => {
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (cursor) {
+            out.push(cursor.key as string);
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        req.onerror = () => reject(req.error ?? new Error("Local database error"));
+      });
+      await txComplete(tx);
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  async clearBlobs(): Promise<void> {
+    if (!this.available) return;
+    const [tx, store] = await this.tx(BLOB_STORE, "readwrite");
+    const req = store.openCursor();
+    await new Promise<void>((resolve, reject) => {
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      req.onerror = () => reject(req.error ?? new Error("Local database error"));
+    });
+    await txComplete(tx);
+  }
+
   async estimate(): Promise<StorageEstimate> {
     if (typeof navigator !== "undefined" && navigator.storage?.estimate) {
       try {

@@ -305,3 +305,15 @@ export const IconTimer = (p: IconProps) => (
 export const IconWidgets = (p: IconProps) => (
   <Base {...p}><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.5" /><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.5" /><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.5" /><rect x="14" y="14" width="6.5" height="6.5" rx="1.5" /></Base>
 );
+
+export const IconEraser = (p: IconProps) => (
+  <Base {...p}><path d="M8.5 19.5 17 11l-4-4-8.5 8.5a1.5 1.5 0 0 0 0 2.1l.9.9h-1.4" /><path d="M13 7l4 4 1.5-1.5a1.5 1.5 0 0 0 0-2.1L16 4.9a1.5 1.5 0 0 0-2.1 0L13 6.3" /><path d="M4.5 19.5h14" /></Base>
+);
+
+export const IconRotateLeft = (p: IconProps) => (
+  <Base {...p}><path d="M4.5 9.5A7.5 7.5 0 1 1 5 15" /><path d="M4.5 4.5v5h5" /></Base>
+);
+
+export const IconRotateRight = (p: IconProps) => (
+  <Base {...p}><path d="M19.5 9.5A7.5 7.5 0 1 0 19 15" /><path d="M19.5 4.5v5h-5" /></Base>
+);

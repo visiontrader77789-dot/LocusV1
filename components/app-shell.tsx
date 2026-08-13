@@ -19,7 +19,7 @@ import { IconFiles, IconHome, IconPlus, IconSettings, IconTasks } from "@/compon
 function MobileNav({ route }: { route: Route }) {
   const { createPage } = useApp();
   const items = [
-    { key: "home", label: "Home", icon: IconHome, go: () => navigate({ name: "dashboard" }) },
+    { key: "dashboard", label: "Home", icon: IconHome, go: () => navigate({ name: "dashboard" }) },
     { key: "tasks", label: "Tasks", icon: IconTasks, go: () => navigate({ name: "tasks" }) },
     { key: "files", label: "Files", icon: IconFiles, go: () => navigate({ name: "files" }) },
     { key: "settings", label: "Settings", icon: IconSettings, go: () => navigate({ name: "settings" }) },

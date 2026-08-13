@@ -44,7 +44,7 @@ interface DragRef {
 }
 
 const NAV = [
-  { key: "home", label: "Home", icon: IconHome, route: { name: "dashboard" } as Route },
+  { key: "dashboard", label: "Home", icon: IconHome, route: { name: "dashboard" } as Route },
   { key: "tasks", label: "Tasks", icon: IconTasks, route: { name: "tasks" } as Route },
   { key: "files", label: "Files", icon: IconFiles, route: { name: "files" } as Route },
   { key: "favorites", label: "Favorites", icon: IconStar, route: { name: "favorites" } as Route },

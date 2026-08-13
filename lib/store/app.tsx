@@ -30,6 +30,9 @@ import {
 } from "@/lib/core/tree";
 import { computeBacklinks, renameLinksInBlocks, type BacklinkRef } from "@/lib/core/backlinks";
 import { type LocusArchive, buildArchive, decodeBase64File, parseLocusText, type ImportResult } from "@/lib/core/serialize";
+import {
+  migrateBlocks, migrateFolders, migratePages, migrateTasks, migrateWorkspace,
+} from "@/lib/core/migration";
 import { Repository } from "@/lib/storage/stores";
 import { IdbBackend, isStorageAvailable } from "@/lib/storage/idb";
 import type { StorageBackend } from "@/lib/storage/backend";
@@ -225,13 +228,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             repo.getFolders(),
           ]);
           if (cancelled) return;
-          setWorkspace(ws);
-          setPages(pg);
-          setTasks(t);
+          setWorkspace(migrateWorkspace(ws));
+          setPages(migratePages(pg));
+          setTasks(migrateTasks(t));
           setFiles(f);
-          setFolders(fo);
+          setFolders(migrateFolders(fo));
           setSettings(st);
-          setBlocks(bl);
+          setBlocks(migrateBlocks(bl));
         }
       } catch (e) {
         if (!cancelled) {

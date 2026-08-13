@@ -154,10 +154,10 @@ export class Repository {
       this.backend.clear(T_FOLDERS),
       this.backend.clear(T_SETTINGS),
       this.backend.clear(T_WORKSPACE),
+      // Purge the blob store too; otherwise re-importing or resetting a
+      // workspace would leave every uploaded file behind forever.
+      this.backend.clearBlobs(),
     ]);
-    // Blobs: cleared individually during file deletion; purge any orphaned ones
-    // by rewriting the blob store. We keep the blob store intact here because
-    // clear() would drop the store schema. Instead we rely on deleteFile paths.
   }
 
   async estimateUsage(): Promise<{ usage: number; quota: number }> {

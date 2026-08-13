@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { Block, BlockType, FileRef, HighlightColor, InlineSpan } from "@/lib/core/types";
-import { formatBytes } from "@/lib/core/util";
-import { readBlock, renderMath, richHtml } from "@/lib/core/rich";
-import { IconCheck, IconCopy, IconDownload, IconFileOther, IconGrip, IconMath, IconTrash } from "@/components/icons";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import type { Block, BlockType, CalloutType, FileRef, HighlightColor, InlineSpan } from "@/lib/core/types";
+import { formatBytes, isValidLinkTarget } from "@/lib/core/util";
+import { escapeHtml, readBlock, renderMath, richHtml, sanitizePasteHtml } from "@/lib/core/rich";
+import {
+  IconCheck, IconChevronDown, IconChevronLeft, IconChevronUp, IconCopy, IconDownload,
+  IconFileOther, IconGrip, IconPen, IconTrash,
+} from "@/components/icons";
 import { Menu, MenuItem, MenuSeparator } from "@/components/primitives";
 import { SlashMenu } from "./slash-menu";
 import { FormatToolbar, type FormatActive, type FormatCommand } from "./format-toolbar";
@@ -18,6 +21,8 @@ export interface EditorHandlers {
   onTypeChange: (blockId: string, type: BlockType) => void;
   onDelete: (blockId: string) => void;
   onDuplicate: (blockId: string) => void;
+  onMove: (blockId: string, dir: "up" | "down") => void;
+  onCopyText: (blockId: string) => void;
   onDragStart: (e: React.DragEvent, blockId: string) => void;
   onDropBlock: (e: React.DragEvent, blockId: string) => void;
   onDragOverBlock: (e: React.DragEvent, blockId: string) => void;
@@ -26,17 +31,25 @@ export interface EditorHandlers {
   /** caret at the very start of a text block: merge into / delete the previous block */
   onBackspaceAtStart: (blockId: string) => void;
   onOpenLink: (title: string) => void;
-  getFile: (attachmentId: string | null) => FileRef | undefined;
   getBlobUrl: (file: FileRef) => Promise<string | null>;
-  focusedBlockId: string | null;
-  slashQuery: string | null;
-  slashActive: number;
   slashSelect: (type: Block["type"]) => void;
   slashSetActive: (i: number) => void;
   slashClose: () => void;
-  isDraggingOver: (id: string) => boolean;
+}
+
+export interface EditorBlockProps {
+  block: Block;
+  handlers: EditorHandlers;
+  number: number | null;
+  /** the file attached to this block, if any */
+  file: FileRef | undefined;
+  focused: boolean;
+  slash: { query: string; active: number } | null;
   /** focus request dispatched by the editor (e.g. after creating a block) */
   caretTarget: { id: string; at: "start" | "end"; seq: number } | null;
+  dragOverPos: "before" | "after" | null;
+  firstBlock: boolean;
+  lastBlock: boolean;
 }
 
 function caretEdges(el: HTMLElement): { atStart: boolean; atEnd: boolean } {
@@ -93,13 +106,26 @@ function selectionInsideTag(el: HTMLElement, tag: string): boolean {
   return start !== null && end !== null && climb(start) && climb(end);
 }
 
-function selectionHighlightColor(el: HTMLElement): HighlightColor | null {
+function selectionHighlightColor(_el: HTMLElement): HighlightColor | null {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return null;
   const range = sel.getRangeAt(0);
   const startEl = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
-  const m = startEl?.closest("mark")?.className.match(/hl-(yellow|green|pink|blue)/);
+  const m = startEl?.closest("mark")?.className.match(/hl-(yellow|green|pink|blue|orange|purple)/);
   return m ? (m[1] as HighlightColor) : null;
+}
+
+/** Unwrap <mark> highlights that overlap the current selection (clear formatting). */
+function unwrapHighlightsInSelection(el: HTMLElement): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  const marks = Array.from(el.querySelectorAll("mark"));
+  for (const mark of marks) {
+    if (!range.intersectsNode(mark)) continue;
+    const parent = mark.parentNode;
+    if (parent) parent.replaceChild(document.createTextNode(mark.textContent ?? ""), mark);
+  }
 }
 
 function useBlobUrl(
@@ -124,27 +150,80 @@ function useBlobUrl(
   return url;
 }
 
-export function EditorBlock({
-  block,
-  handlers,
-  number = null,
-}: {
-  block: Block;
-  handlers: EditorHandlers;
-  number?: number | null;
-}) {
+// ---- Callout metadata ------------------------------------------------------
+
+const CALLOUT_META: Record<CalloutType, { emoji: string; label: string }> = {
+  info: { emoji: "ℹ️", label: "Info" },
+  success: { emoji: "✅", label: "Success" },
+  warning: { emoji: "⚠️", label: "Warning" },
+  danger: { emoji: "❌", label: "Danger" },
+  tip: { emoji: "💡", label: "Tip" },
+  note: { emoji: "📝", label: "Note" },
+};
+const CALLOUT_META_LIST: Array<{ type: CalloutType; emoji: string; label: string }> = (
+  Object.keys(CALLOUT_META) as CalloutType[]
+).map((t) => ({ type: t, ...CALLOUT_META[t] }));
+
+// ---- Code block language options -------------------------------------------
+
+const CODE_LANGUAGES: Array<{ value: string; label: string }> = [
+  { value: "", label: "Plain text" },
+  { value: "javascript", label: "JavaScript" },
+  { value: "typescript", label: "TypeScript" },
+  { value: "jsx", label: "JSX" },
+  { value: "tsx", label: "TSX" },
+  { value: "html", label: "HTML" },
+  { value: "css", label: "CSS" },
+  { value: "scss", label: "SCSS" },
+  { value: "markdown", label: "Markdown" },
+  { value: "json", label: "JSON" },
+  { value: "python", label: "Python" },
+  { value: "bash", label: "Bash" },
+  { value: "shell", label: "Shell" },
+  { value: "sql", label: "SQL" },
+  { value: "yaml", label: "YAML" },
+  { value: "go", label: "Go" },
+  { value: "rust", label: "Rust" },
+  { value: "java", label: "Java" },
+  { value: "c", label: "C" },
+  { value: "cpp", label: "C++" },
+  { value: "csharp", label: "C#" },
+  { value: "php", label: "PHP" },
+  { value: "ruby", label: "Ruby" },
+  { value: "swift", label: "Swift" },
+  { value: "kotlin", label: "Kotlin" },
+  { value: "dart", label: "Dart" },
+];
+
+const TURN_INTO_OPTIONS: Array<{ type: BlockType; label: string }> = [
+  { type: "paragraph", label: "Text" },
+  { type: "heading1", label: "Heading 1" },
+  { type: "heading2", label: "Heading 2" },
+  { type: "heading3", label: "Heading 3" },
+  { type: "bulletList", label: "Bullet list" },
+  { type: "numberedList", label: "Numbered list" },
+  { type: "todoList", label: "To-do list" },
+  { type: "quote", label: "Quote" },
+  { type: "callout", label: "Callout" },
+  { type: "code", label: "Code" },
+];
+
+// ---- Editor block ----------------------------------------------------------
+
+export const EditorBlock = memo(function EditorBlock(props: EditorBlockProps) {
+  const {
+    block, handlers, number, file, focused, slash, caretTarget, dragOverPos, firstBlock, lastBlock,
+  } = props;
   const {
     onContentChange, onPatch, onKeyDown, onFocusBlock, onBlurBlock, onTypeChange,
-    onDropBlock, onDragOverBlock, onRequestFocus,
-    onBackspaceAtStart, onOpenLink, getFile, getBlobUrl, focusedBlockId, slashQuery,
-    slashActive, slashSelect, slashSetActive, isDraggingOver, caretTarget,
+    onDropBlock, onDragOverBlock, onRequestFocus, onBackspaceAtStart, onOpenLink,
+    getBlobUrl, slashSelect, slashSetActive,
   } = handlers;
 
   const elRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const isFocused = focusedBlockId === block.id;
+  const isFocused = focused;
   const [checked, setChecked] = useState(block.checked);
-  const file = getFile(block.attachmentId);
   const blobUrl = useBlobUrl(file, getBlobUrl);
 
   // Contextual formatting toolbar state.
@@ -154,6 +233,7 @@ export function EditorBlock({
   });
   const [linkMode, setLinkMode] = useState(false);
   const [linkValue, setLinkValue] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
   // Mirror of linkMode for the DOM listener (effect closure) below.
   const linkModeRef = useRef(false);
   linkModeRef.current = linkMode;
@@ -162,7 +242,6 @@ export function EditorBlock({
   const linkRangeRef = useRef<Range | null>(null);
 
   useEffect(() => { setChecked(block.checked); }, [block.checked]);
-  useEffect(() => { /* reset internal state on block swap */ }, [block.id]);
 
   // ---- reading the DOM back into content + spans --------------------------
   const syncModel = useCallback(() => {
@@ -174,7 +253,7 @@ export function EditorBlock({
 
   // ---- programmatic focus (new block, merging, transforms) ----------------
   useEffect(() => {
-    if (!caretTarget || caretTarget.id !== block.id) return;
+    if (!caretTarget) return;
     const el = (elRef.current ?? taRef.current) as HTMLElement | null;
     if (!el) return;
     const t = window.setTimeout(() => {
@@ -290,6 +369,18 @@ export function EditorBlock({
     onOpenLink(link);
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const html = e.clipboardData.getData("text/html");
+    const text = e.clipboardData.getData("text/plain");
+    if (!html && !text) return;
+    e.preventDefault();
+    const safe = html
+      ? sanitizePasteHtml(html)
+      : escapeHtml(text).replace(/\n/g, "<br>");
+    document.execCommand("insertHTML", false, safe);
+    window.requestAnimationFrame(() => syncModel());
+  };
+
   // ---- formatting ---------------------------------------------------------
   const applyInlineCode = (el: HTMLElement) => {
     const sel = window.getSelection();
@@ -349,6 +440,7 @@ export function EditorBlock({
       if (a) existing = a.getAttribute("data-link") ?? "";
     }
     setLinkValue(existing);
+    setLinkError(null);
     setLinkMode(true);
   };
 
@@ -414,6 +506,9 @@ export function EditorBlock({
     } else if (cmd.startsWith("highlight:")) {
       const color = cmd === "highlight:none" ? null : (cmd.slice("highlight:".length) as HighlightColor);
       applyHighlight(el, color);
+    } else if (cmd === "clear") {
+      document.execCommand("removeFormat", false);
+      unwrapHighlightsInSelection(el);
     } else {
       document.execCommand(cmd, false);
     }
@@ -422,6 +517,11 @@ export function EditorBlock({
 
   const applyLink = () => {
     const target = linkValue.trim();
+    if (!isValidLinkTarget(target)) {
+      setLinkError("Only http(s), mailto or ftp links are allowed.");
+      return;
+    }
+    setLinkError(null);
     const el = elRef.current;
     if (!el) return;
     const range = linkRangeRef.current;
@@ -520,7 +620,9 @@ export function EditorBlock({
     e.preventDefault();
     onDragOverBlock(e, block.id);
   };
-  const isOver = isDraggingOver(block.id);
+  const isOver = dragOverPos !== null;
+  const dragIndicator = dragOverPos ? <DragLine pos={dragOverPos} /> : null;
+  const placeholder = block.content === "" ? (firstBlock ? "Start writing…" : "Type / for commands") : undefined;
 
   const listMarker = () => {
     if (block.type === "bulletList") {
@@ -543,7 +645,7 @@ export function EditorBlock({
             checked ? "bg-accent border-accent text-accent-ink" : "border-line-strong hover:border-accent"
           }`}
         >
-          {checked && <IconCheck size={11} />}
+          {checked && <IconCheck size={11} className="editor-check-pop" />}
         </button>
       );
     }
@@ -554,7 +656,8 @@ export function EditorBlock({
   if (block.type === "divider") {
     return (
       <div className="editor-block-row group relative" style={wrapperStyle}>
-        <Handle block={block} handlers={handlers} />
+        <Handle block={block} handlers={handlers} firstBlock={firstBlock} lastBlock={lastBlock} />
+        {dragIndicator}
         <div className={`w-full py-2 rounded-[6px] ${isOver ? "bg-accent-soft" : ""}`}
           onDragOver={dragOver} onDrop={(e) => onDropBlock(e, block.id)}>
           <div className="h-px bg-line-strong" />
@@ -567,7 +670,8 @@ export function EditorBlock({
     const isImage = block.type === "image";
     return (
       <div className="editor-block-row group relative" style={wrapperStyle}>
-        <Handle block={block} handlers={handlers} />
+        <Handle block={block} handlers={handlers} firstBlock={firstBlock} lastBlock={lastBlock} />
+        {dragIndicator}
         <div
           className={`my-2 ${isImage ? "max-w-[540px]" : "max-w-[400px]"} ${isOver ? "opacity-60" : ""}`}
           onDragOver={dragOver}
@@ -630,7 +734,8 @@ export function EditorBlock({
     const rows = block.rows.length > 0 ? block.rows : [["", "", ""]];
     return (
       <div className="editor-block-row group relative" style={wrapperStyle}>
-        <Handle block={block} handlers={handlers} />
+        <Handle block={block} handlers={handlers} firstBlock={firstBlock} lastBlock={lastBlock} />
+        {dragIndicator}
         <div className="my-2 w-full overflow-x-auto rounded-[6px] border border-line" onDragOver={dragOver} onDrop={(e) => onDropBlock(e, block.id)}>
           <table className="w-full border-collapse">
             <tbody>
@@ -662,20 +767,24 @@ export function EditorBlock({
   if (block.type === "code") {
     return (
       <div className="editor-block-row group relative" style={wrapperStyle}>
-        <Handle block={block} handlers={handlers} />
-        <textarea
-          ref={taRef}
-          value={block.content}
-          rows={Math.max(2, block.content.split("\n").length)}
-          spellCheck={false}
-          placeholder="Type or paste code…"
-          aria-label="Code block"
-          className="editor-block editor-code !h-auto resize-y w-full"
-          onFocus={() => onFocusBlock(block.id)}
-          onInput={() => onFocusBlock(block.id)}
-          onChange={(e) => onContentChange(block.id, e.target.value)}
-          onKeyDown={onTextareaKeyDown}
-        />
+        <Handle block={block} handlers={handlers} firstBlock={firstBlock} lastBlock={lastBlock} />
+        {dragIndicator}
+        <div className={`code-block w-full ${isOver ? "border-accent" : ""}`} onDragOver={dragOver} onDrop={(e) => onDropBlock(e, block.id)}>
+          <CodeHeader block={block} onPatch={onPatch} />
+          <textarea
+            ref={taRef}
+            value={block.content}
+            rows={Math.max(2, block.content.split("\n").length)}
+            spellCheck={false}
+            placeholder="Type or paste code…"
+            aria-label="Code block"
+            className="editor-block editor-code !h-auto !my-0 resize-y w-full !rounded-none !border-0 bg-transparent"
+            onFocus={() => onFocusBlock(block.id)}
+            onInput={() => onFocusBlock(block.id)}
+            onChange={(e) => onContentChange(block.id, e.target.value)}
+            onKeyDown={onTextareaKeyDown}
+          />
+        </div>
       </div>
     );
   }
@@ -684,7 +793,8 @@ export function EditorBlock({
     const previewHtml = renderMath(block.content, true);
     return (
       <div className="editor-block-row group relative" style={wrapperStyle}>
-        <Handle block={block} handlers={handlers} />
+        <Handle block={block} handlers={handlers} firstBlock={firstBlock} lastBlock={lastBlock} />
+        {dragIndicator}
         <div className={`flex-1 min-w-0 my-2 rounded-[8px] border ${isOver ? "border-accent" : "border-line"} bg-surface overflow-x-auto`}
           onDragOver={dragOver} onDrop={(e) => onDropBlock(e, block.id)}>
           {previewHtml ? (
@@ -714,34 +824,98 @@ export function EditorBlock({
     );
   }
 
+  if (block.type === "callout") {
+    const ct = block.calloutType ?? "note";
+    const meta = CALLOUT_META[ct];
+    return (
+      <div className="editor-block-row group relative" style={wrapperStyle}>
+        <Handle block={block} handlers={handlers} firstBlock={firstBlock} lastBlock={lastBlock} />
+        {dragIndicator}
+        <div
+          className={`editor-callout flex-1 min-w-0 ${isOver ? "border-accent" : ""}`}
+          data-callout={ct}
+          onDragOver={dragOver}
+          onDrop={(e) => onDropBlock(e, block.id)}
+        >
+          <CalloutTypeButton block={block} onPatch={onPatch} />
+          <div
+            ref={elRef}
+            contentEditable
+            suppressContentEditableWarning
+            role="textbox"
+            aria-multiline="false"
+            aria-label={`${meta.label} callout`}
+            className="editor-block editor-block-editable flex-1 min-w-0 editor-paragraph"
+            data-empty={block.content === "" ? "true" : undefined}
+            data-placeholder={placeholder}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onInput={handleInput}
+            onClick={handleClick}
+            onPaste={handlePaste}
+            onKeyDown={onKeyDownLocal}
+          />
+        </div>
+        {selRect && (
+          <FormatToolbar
+            x={selRect.x}
+            y={selRect.y}
+            active={fmtActive}
+            onFormat={runFormat}
+            linkMode={linkMode}
+            linkValue={linkValue}
+            linkError={linkError}
+            onLinkValue={(v) => { setLinkValue(v); setLinkError(null); }}
+            onLinkApply={applyLink}
+            onLinkCancel={() => { setLinkMode(false); linkRangeRef.current = null; setSelRect(null); }}
+          />
+        )}
+        {slash && (
+          <SlashMenu
+            query={slash.query}
+            active={slash.active}
+            setActive={slashSetActive}
+            onSelect={slashSelect}
+          />
+        )}
+      </div>
+    );
+  }
+
   // Text blocks --------------------------------------------------------------
   const cls =
     block.type === "heading1" ? "editor-h1" :
     block.type === "heading2" ? "editor-h2" :
     block.type === "heading3" ? "editor-h3" :
     block.type === "quote" ? "editor-quote" : "editor-paragraph";
+  const heading = block.type === "heading1" || block.type === "heading2" || block.type === "heading3";
 
   return (
     <div
       className={`editor-block-row group relative flex items-start gap-1.5 ${isOver ? "rounded-[6px] bg-accent-soft" : ""}`}
       style={wrapperStyle}
+      onDragOver={dragOver}
+      onDrop={(e) => onDropBlock(e, block.id)}
     >
-      <Handle block={block} handlers={handlers} />
+      <Handle block={block} handlers={handlers} firstBlock={firstBlock} lastBlock={lastBlock} />
+      {dragIndicator}
       {listMarker()}
       <div
         ref={elRef}
         contentEditable
         suppressContentEditableWarning
-        role="textbox"
+        role={heading ? "heading" : "textbox"}
+        aria-level={heading ? Number(block.type.slice(-1)) : undefined}
         aria-multiline="false"
-        aria-label={block.type === "heading1" ? "Heading" : "Block text"}
+        aria-label={heading ? "Heading" : "Block text"}
         className={`editor-block editor-block-editable flex-1 ${cls} ${checked && block.type === "todoList" ? "opacity-55 line-through" : ""}`}
         data-empty={block.content === "" ? "true" : undefined}
-        data-placeholder={block.content === "" ? "Type / for commands" : undefined}
+        data-placeholder={placeholder}
         onFocus={handleFocus}
         onBlur={handleBlur}
         onInput={handleInput}
         onClick={handleClick}
+        onPaste={handlePaste}
         onKeyDown={onKeyDownLocal}
       />
       {selRect && (
@@ -752,54 +926,228 @@ export function EditorBlock({
           onFormat={runFormat}
           linkMode={linkMode}
           linkValue={linkValue}
-          onLinkValue={setLinkValue}
+          linkError={linkError}
+          onLinkValue={(v) => { setLinkValue(v); setLinkError(null); }}
           onLinkApply={applyLink}
           onLinkCancel={() => { setLinkMode(false); linkRangeRef.current = null; setSelRect(null); }}
         />
       )}
-      {slashQuery !== null && isFocused && (
+      {slash && (
         <SlashMenu
-          query={slashQuery}
-          active={slashActive}
+          query={slash.query}
+          active={slash.active}
           setActive={slashSetActive}
           onSelect={slashSelect}
         />
       )}
     </div>
   );
+}, areEqual);
+
+function areEqual(prev: EditorBlockProps, next: EditorBlockProps): boolean {
+  return (
+    prev.block === next.block &&
+    prev.number === next.number &&
+    prev.file === next.file &&
+    prev.focused === next.focused &&
+    prev.firstBlock === next.firstBlock &&
+    prev.lastBlock === next.lastBlock &&
+    prev.dragOverPos === next.dragOverPos &&
+    prev.handlers === next.handlers &&
+    prev.caretTarget === next.caretTarget &&
+    prev.slash === next.slash
+  );
 }
 
-function Handle({ block, handlers }: { block: Block; handlers: EditorHandlers }) {
+// ---- Drag indicator ---------------------------------------------------------
+
+function DragLine({ pos }: { pos: "before" | "after" }) {
+  return (
+    <div
+      aria-hidden="true"
+      className="editor-drag-line absolute left-0 right-0 z-20 pointer-events-none"
+      style={pos === "before" ? { top: -1 } : { bottom: -1 }}
+    />
+  );
+}
+
+// ---- Callout type picker ----------------------------------------------------
+
+function CalloutTypeButton({ block, onPatch }: { block: Block; onPatch: (id: string, patch: Partial<Block>) => void }) {
+  const ct = block.calloutType ?? "note";
+  const meta = CALLOUT_META[ct];
   return (
     <Menu
-      width={190}
+      width={180}
+      align="start"
       trigger={(open) => (
         <span
           role="button"
-          aria-label="Block options"
-          className={`block-handle ${open ? "open" : ""}`}
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.effectAllowed = "move";
-            e.dataTransfer.setData("text/plain", block.id);
-            handlers.onDragStart(e, block.id);
-          }}
+          aria-label={`Callout type: ${meta.label}`}
+          title={`Callout type: ${meta.label}`}
+          className={`callout-type-btn ${open ? "open" : ""}`}
         >
-          <IconGrip size={14} />
+          {meta.emoji}
         </span>
       )}
     >
       {(close) => (
         <>
-          <MenuItem leading={<IconCopy size={13} />} onClick={() => { handlers.onDuplicate(block.id); close(); }}>
-            Duplicate
-          </MenuItem>
-          <MenuSeparator />
-          <MenuItem danger leading={<IconTrash size={13} />} onClick={() => { handlers.onDelete(block.id); close(); }}>
-            Delete
-          </MenuItem>
+          {CALLOUT_META_LIST.map((m) => (
+            <MenuItem
+              key={m.type}
+              active={ct === m.type}
+              leading={<span className="text-[13px] leading-none">{m.emoji}</span>}
+              onClick={() => { onPatch(block.id, { calloutType: m.type }); close(); }}
+            >
+              {m.label}
+            </MenuItem>
+          ))}
         </>
       )}
     </Menu>
+  );
+}
+
+// ---- Code block header ------------------------------------------------------
+
+function CodeHeader({ block, onPatch }: { block: Block; onPatch: (id: string, patch: Partial<Block>) => void }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = () => {
+    if (!block.content) return;
+    const done = () => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(block.content).then(done, () => {});
+    }
+  };
+  return (
+    <div className="code-block-header">
+      <select
+        value={block.language ?? ""}
+        aria-label="Code language"
+        className="code-lang-select"
+        onChange={(e) => onPatch(block.id, { language: e.target.value || undefined })}
+      >
+        {CODE_LANGUAGES.map((l) => (
+          <option key={l.value || "plaintext"} value={l.value}>
+            {l.label}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className={`code-copy-btn ${copied ? "copied" : ""}`}
+        aria-label={copied ? "Copied" : "Copy code"}
+        onClick={doCopy}
+      >
+        <IconCopy size={12} />
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+// ---- Block handle menu ------------------------------------------------------
+
+function Handle({ block, handlers, firstBlock, lastBlock }: { block: Block; handlers: EditorHandlers; firstBlock: boolean; lastBlock: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [pane, setPane] = useState<"main" | "types">("main");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const close = () => { setOpen(false); setPane("main"); };
+
+  return (
+    <div className="relative" ref={ref}>
+      <span
+        role="button"
+        aria-label="Block options"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`block-handle ${open ? "open" : ""}`}
+        onClick={() => { setOpen((o) => !o); setPane("main"); }}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", block.id);
+          handlers.onDragStart(e, block.id);
+        }}
+      >
+        <IconGrip size={14} />
+      </span>
+      {open && (
+        <div
+          className="absolute left-0 top-full z-40 mt-1 bg-surface border border-line rounded-[6px] shadow-[var(--shadow-2)] anim-pop p-1 w-[200px]"
+          role="menu"
+          aria-label="Block options"
+        >
+          {pane === "main" ? (
+            <>
+              <MenuItem leading={<IconPen size={13} />} onClick={() => setPane("types")}>
+                Turn into
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem leading={<IconChevronUp size={13} />} disabled={firstBlock} onClick={() => { handlers.onMove(block.id, "up"); close(); }}>
+                Move up
+              </MenuItem>
+              <MenuItem leading={<IconChevronDown size={13} />} disabled={lastBlock} onClick={() => { handlers.onMove(block.id, "down"); close(); }}>
+                Move down
+              </MenuItem>
+              <MenuItem leading={<IconCopy size={13} />} onClick={() => { handlers.onCopyText(block.id); close(); }}>
+                Copy text
+              </MenuItem>
+              <MenuItem leading={<IconCopy size={13} />} onClick={() => { handlers.onDuplicate(block.id); close(); }}>
+                Duplicate
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem danger leading={<IconTrash size={13} />} onClick={() => { handlers.onDelete(block.id); close(); }}>
+                Delete
+              </MenuItem>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-0.5 pt-0.5 pb-1">
+                <button
+                  type="button"
+                  aria-label="Back to block options"
+                  className="flex items-center justify-center w-6 h-6 rounded-[4px] text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
+                  onClick={() => setPane("main")}
+                >
+                  <IconChevronLeft size={13} />
+                </button>
+                <div className="eyebrow">Turn into</div>
+              </div>
+              {TURN_INTO_OPTIONS.map((o) => (
+                <MenuItem
+                  key={o.type}
+                  active={block.type === o.type}
+                  onClick={() => { handlers.onTypeChange(block.id, o.type); close(); }}
+                >
+                  {o.label}
+                </MenuItem>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

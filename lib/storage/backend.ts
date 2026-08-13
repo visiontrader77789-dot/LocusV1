@@ -28,6 +28,10 @@ export interface StorageBackend {
   getBlob(key: string): Promise<Blob | null>;
   putBlob(key: string, blob: Blob): Promise<void>;
   deleteBlob(key: string): Promise<void>;
+  /** List every blob key currently stored. */
+  getAllBlobKeys(): Promise<string[]>;
+  /** Remove every stored blob. */
+  clearBlobs(): Promise<void>;
 
   estimate(): Promise<StorageEstimate>;
 }

@@ -5,6 +5,7 @@
  * The same types and serialization are reused by the web app today and by the
  * future Locus Desktop / Android / iOS builds.
  */
+import { uid } from "./util";
 
 export type ID = string;
 
@@ -24,12 +25,25 @@ export type BlockType =
   | "image"
   | "file"
   | "table"
-  | "math";
+  | "math"
+  | "callout";
 
 /** Text marker highlight colors. Must stay readable in light AND dark mode. */
-export type HighlightColor = "yellow" | "green" | "pink" | "blue";
+export type HighlightColor = "yellow" | "green" | "pink" | "blue" | "orange" | "purple";
 
-export const HIGHLIGHT_COLORS: HighlightColor[] = ["yellow", "green", "pink", "blue"];
+export const HIGHLIGHT_COLORS: HighlightColor[] = [
+  "yellow",
+  "green",
+  "pink",
+  "blue",
+  "orange",
+  "purple",
+];
+
+/** Callout variants. Each renders with its own accent color + icon. */
+export type CalloutType = "info" | "success" | "warning" | "danger" | "tip" | "note";
+
+export const CALLOUT_TYPES: CalloutType[] = ["info", "success", "warning", "danger", "tip", "note"];
 
 export interface Workspace {
   id: ID;
@@ -115,6 +129,10 @@ export interface Block {
   indent: number;
   /** table blocks only: a grid of cell texts. */
   rows: string[][];
+  /** callout blocks only. Absent = defaults to "note". */
+  calloutType?: CalloutType;
+  /** code blocks only: the language label used by the code header selector. */
+  language?: string;
   /** Sibling ordering within a page. */
   order: number;
   createdAt: number;
@@ -238,7 +256,7 @@ export function newPage(
 ): Page {
   const now = Date.now();
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     workspaceId,
     title: title || "Untitled",
     icon: "",
@@ -258,7 +276,7 @@ export function newFolder(
 ): Folder {
   const now = Date.now();
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     workspaceId,
     name: name || "New folder",
     icon: "",
@@ -276,7 +294,7 @@ export function newBlock(
 ): Block {
   const now = Date.now();
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     pageId,
     type,
     content,
@@ -298,7 +316,7 @@ export function newTask(
 ): Task {
   const now = Date.now();
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     workspaceId,
     title,
     notes: "",
@@ -324,7 +342,7 @@ export function newFileRef(
 ): FileRef {
   const now = Date.now();
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     workspaceId,
     name,
     size,

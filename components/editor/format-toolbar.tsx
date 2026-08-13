@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  IconBold, IconCodeInline, IconHighlighter, IconItalic, IconLink, IconStrike, IconUnderline,
+  IconBold, IconCodeInline, IconEraser, IconHighlighter, IconItalic, IconLink, IconStrike, IconUnderline,
 } from "@/components/icons";
 import type { HighlightColor } from "@/lib/core/types";
 
 export type FormatCommand =
-  | "bold" | "italic" | "underline" | "strikeThrough" | "code" | "link"
+  | "bold" | "italic" | "underline" | "strikeThrough" | "code" | "link" | "clear"
   | `highlight:${HighlightColor}`
   | "highlight:none";
 
@@ -25,6 +25,8 @@ const HIGHLIGHT_OPTIONS: Array<{ color: HighlightColor; label: string }> = [
   { color: "green", label: "Green highlight" },
   { color: "pink", label: "Pink highlight" },
   { color: "blue", label: "Blue highlight" },
+  { color: "orange", label: "Orange highlight" },
+  { color: "purple", label: "Purple highlight" },
 ];
 
 export function FormatToolbar({
@@ -37,6 +39,7 @@ export function FormatToolbar({
   onLinkValue,
   onLinkApply,
   onLinkCancel,
+  linkError,
 }: {
   x: number;
   y: number;
@@ -47,6 +50,7 @@ export function FormatToolbar({
   onLinkValue: (v: string) => void;
   onLinkApply: () => void;
   onLinkCancel: () => void;
+  linkError: string | null;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [hlOpen, setHlOpen] = useState(false);
@@ -55,7 +59,7 @@ export function FormatToolbar({
     if (linkMode) inputRef.current?.focus();
   }, [linkMode]);
 
-  const width = linkMode ? 240 : 232;
+  const width = linkMode ? (linkError ? 264 : 240) : 260;
   const left = Math.max(12, Math.min(x - width / 2, window.innerWidth - width - 12));
 
   return (
@@ -68,19 +72,26 @@ export function FormatToolbar({
     >
       {linkMode ? (
         <div className="format-link-row">
-          <input
-            ref={inputRef}
-            value={linkValue}
-            onChange={(e) => onLinkValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onLinkApply();
-              if (e.key === "Escape") onLinkCancel();
-            }}
-            placeholder="Page title or https://…"
-            aria-label="Link target"
-            spellCheck={false}
-            className="format-link-input"
-          />
+          <div className="flex-1 min-w-0">
+            <input
+              ref={inputRef}
+              value={linkValue}
+              onChange={(e) => onLinkValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onLinkApply();
+                if (e.key === "Escape") onLinkCancel();
+              }}
+              placeholder="Page title or https://…"
+              aria-label="Link target"
+              spellCheck={false}
+              className="format-link-input"
+            />
+            {linkError && (
+              <div className="mt-1 text-[11px] text-danger" role="alert">
+                {linkError}
+              </div>
+            )}
+          </div>
           <button type="button" className="format-btn format-btn-ok" aria-label="Apply link" onClick={onLinkApply}>
             Apply
           </button>
@@ -145,12 +156,12 @@ export function FormatToolbar({
             </button>
             {hlOpen && (
               <div
-                className="absolute top-full right-0 mt-1 z-50 bg-surface border border-line rounded-[6px] shadow-[var(--shadow-2)] anim-pop p-1.5 w-[150px]"
+                className="absolute top-full right-0 mt-1 z-50 bg-surface border border-line rounded-[6px] shadow-[var(--shadow-2)] anim-pop p-1.5 w-[164px]"
                 role="menu"
                 aria-label="Highlight color"
               >
                 <div className="px-1 pb-1 eyebrow">Highlight</div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {HIGHLIGHT_OPTIONS.map(({ color, label }) => (
                     <button
                       key={color}
@@ -182,6 +193,16 @@ export function FormatToolbar({
             onClick={() => onFormat("link")}
           >
             <IconLink size={14} />
+          </button>
+          <span className="format-sep" aria-hidden="true" />
+          <button
+            type="button"
+            aria-label="Clear formatting"
+            title="Clear formatting"
+            className="format-btn"
+            onClick={() => onFormat("clear")}
+          >
+            <IconEraser size={14} />
           </button>
         </>
       )}

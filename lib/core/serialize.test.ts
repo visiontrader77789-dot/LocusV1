@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Folder, Page, Settings, Workspace } from "./types";
+import { newBlock } from "./types";
 import { archiveToText, buildArchive, parseLocusText } from "./serialize";
 
 const workspace: Workspace = {
@@ -86,5 +87,29 @@ describe("folder archive round-trip", () => {
     const result = parseLocusText(text);
     expect(result.ok).toBe(true);
     expect(result.data?.pages.find((p) => p.id === "p1")?.folderId).toBeNull();
+  });
+});
+
+describe("callout/code block archive round-trip", () => {
+  it("preserves calloutType and code language across a backup", async () => {
+    const callout = newBlock("p1", "callout", "Heads up");
+    callout.calloutType = "warning";
+    const code = newBlock("p1", "code", "x = 1");
+    code.language = "python";
+    const archive = await buildArchive({
+      workspace,
+      settings,
+      pages: [page("p1", "Notes")],
+      folders: [],
+      blocks: [callout, code],
+      tasks: [],
+      files: [],
+      blobFor: async () => null,
+    });
+    const result = parseLocusText(archiveToText(archive));
+    expect(result.ok).toBe(true);
+    const parsed = result.data?.blocks ?? [];
+    expect(parsed.find((b) => b.type === "callout")?.calloutType).toBe("warning");
+    expect(parsed.find((b) => b.type === "code")?.language).toBe("python");
   });
 });

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { BlockType } from "@/lib/core/types";
 import {
-  IconChecklist, IconCode, IconFileText, IconImage, IconList,
+  IconChecklist, IconCode, IconFileText, IconImage, IconInfo, IconList,
   IconListNumbered, IconMath, IconMinus, IconPage, IconQuote, IconTable,
 } from "@/components/icons";
 
@@ -23,6 +23,7 @@ export const SLASH_ITEMS: SlashItem[] = [
   { type: "bulletList", label: "Bullet list", hint: "Simple list", icon: <IconList size={15} /> },
   { type: "numberedList", label: "Numbered list", hint: "Ordered list", icon: <IconListNumbered size={15} /> },
   { type: "quote", label: "Quote", hint: "A pull quote", icon: <IconQuote size={15} /> },
+  { type: "callout", label: "Callout", hint: "A highlighted note", icon: <IconInfo size={15} /> },
   { type: "code", label: "Code", hint: "Monospace block", icon: <IconCode size={15} /> },
   { type: "math", label: "Math", hint: "LaTeX equation", icon: <IconMath size={15} /> },
   { type: "divider", label: "Divider", hint: "A horizontal rule", icon: <IconMinus size={15} /> },
@@ -38,6 +39,7 @@ const KEYWORDS: Record<string, string> = {
   "/bullet": "bullet ul list unordered",
   "/numbered": "numbered ol order list ordered",
   "/quote": "quote blockquote pull",
+  "/callout": "callout note highlight box tip warning info",
   "/code": "code block monospace pre",
   "/math": "math latex equation formula",
   "/divider": "divider hr line rule separator",
@@ -80,7 +82,7 @@ export function SlashMenu({
 
   if (items.length === 0) {
     return (
-      <div className="absolute left-0 top-full mt-1 z-30 w-[240px] bg-surface border border-line rounded-[6px] shadow-[var(--shadow-2)] p-3 text-[12.5px] text-ink-3 anim-pop">
+      <div className="absolute left-0 top-full mt-1 z-30 w-[240px] max-w-[calc(100vw-24px)] bg-surface border border-line rounded-[6px] shadow-[var(--shadow-2)] p-3 text-[12.5px] text-ink-3 anim-pop">
         No command for “{query}”. Type Enter to keep it as text.
       </div>
     );
@@ -89,7 +91,7 @@ export function SlashMenu({
   return (
     <div
       ref={ref}
-      className="absolute left-0 top-full mt-1 z-30 w-[260px] bg-surface border border-line rounded-[6px] shadow-[var(--shadow-2)] p-1 max-h-[300px] overflow-y-auto anim-pop"
+      className="absolute left-0 top-full mt-1 z-30 w-[260px] max-w-[calc(100vw-24px)] bg-surface border border-line rounded-[6px] shadow-[var(--shadow-2)] p-1 max-h-[300px] overflow-y-auto anim-pop"
       role="listbox"
       aria-label="Insert block"
     >

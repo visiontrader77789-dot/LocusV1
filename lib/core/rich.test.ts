@@ -8,9 +8,19 @@ import {
   matchDeferredBullet,
   matchMarkdown,
   mergeSpans,
+  normalizeEditorText,
   normalizeSpans,
   richHtml,
 } from "@/lib/core/rich";
+
+describe("normalizeEditorText", () => {
+  it("flattens browser NBSP placeholders back to spaces", () => {
+    expect(normalizeEditorText("#\u00a0")).toBe("# ");
+    expect(normalizeEditorText("- [ ]\u00a0")).toBe("- [ ] ");
+    expect(normalizeEditorText("a\u00a0b")).toBe("a b");
+    expect(normalizeEditorText("plain")).toBe("plain");
+  });
+});
 
 describe("matchMarkdown", () => {
   it("converts completed markers", () => {
@@ -26,6 +36,8 @@ describe("matchMarkdown", () => {
   it("converts checklist markers to todoList", () => {
     expect(matchMarkdown("- [ ] ")).toEqual({ type: "todoList", checked: false, content: "" });
     expect(matchMarkdown("- [x] ")).toEqual({ type: "todoList", checked: true, content: "" });
+    expect(matchMarkdown("[] ")).toEqual({ type: "todoList", checked: false, content: "" });
+    expect(matchMarkdown("[ ] ")).toEqual({ type: "todoList", checked: false, content: "" });
   });
 
   it("ignores unfinished or extended content", () => {
@@ -37,6 +49,9 @@ describe("matchMarkdown", () => {
     expect(matchMarkdown("- ")).toBeNull();
     expect(matchMarkdown("- [ ]")).toBeNull();
     expect(matchMarkdown("```x")).toBeNull();
+    expect(matchMarkdown("[")).toBeNull();
+    expect(matchMarkdown("[]")).toBeNull();
+    expect(matchMarkdown("[ x ] ")).toBeNull();
   });
 });
 
@@ -156,6 +171,25 @@ describe("richHtml", () => {
     ]);
     expect(html).toContain('<mark class="hl-yellow">Hello</mark>');
     expect(html).toContain('<mark class="hl-blue">world</mark>');
+  });
+
+  it("renders orange and purple highlights", () => {
+    const html = richHtml("Hot tip", [
+      { from: 0, to: 3, highlight: "orange" },
+      { from: 4, to: 7, highlight: "purple" },
+    ]);
+    expect(html).toContain('<mark class="hl-orange">Hot</mark>');
+    expect(html).toContain('<mark class="hl-purple">tip</mark>');
+  });
+
+  it("normalizes unknown highlight colors away", () => {
+    const html = richHtml("test", [{ from: 0, to: 4, highlight: "teal" as never }]);
+    expect(html).toBe("test");
+  });
+
+  it("preserves soft line breaks as <br>", () => {
+    expect(richHtml("line1\nline2", [], false)).toBe("line1<br>line2");
+    expect(richHtml("a\n\nb", [], false)).toBe("a<br><br>b");
   });
 
   it("renders inline math as KaTeX when chips are on", () => {

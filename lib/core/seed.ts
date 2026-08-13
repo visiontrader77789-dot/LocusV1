@@ -36,11 +36,16 @@ export function seedWorkspace(workspaceId: string): SeedResult {
   personal.updatedAt = now;
   personal.order = 2;
 
+  // Blocks are sorted by `order` in the editor; give each block a distinct,
+  // deterministic order so the welcome page renders top-to-bottom on first run
+  // instead of in IndexedDB key order (which sorts equal orders arbitrarily).
+  let blockOrder = 0;
   const B = (type: Parameters<typeof newBlock>[1], content = ""): Block => {
     const b = newBlock(welcome.id, type, content);
     b.id = uid();
     b.createdAt = now;
     b.updatedAt = now;
+    b.order = blockOrder++;
     return b;
   };
 
@@ -65,6 +70,11 @@ export function seedWorkspace(workspaceId: string): SeedResult {
     B("todoList", "Add a task from the Tasks page"),
     B("todoList", "Keep a backup: Settings → Export workspace"),
     B("quote", "Your data stays on your device."),
+    (() => {
+      const b = B("callout", "Everything is saved automatically as you type. Hit Ctrl/⌘ Z to undo and Ctrl/⌘ Shift Z to redo.");
+      b.calloutType = "tip";
+      return b;
+    })(),
     B("heading2", "Linking pages"),
     B("paragraph", "Type [[Projects]] or [[Personal]] in any block to link another page. Locus finds the links for you and shows where each page is linked from."),
     B("code", "locus/\n  welcome-to-locus/\n    projects\n    personal\n\nEverything above lives on this device."),
@@ -79,15 +89,18 @@ export function seedWorkspace(workspaceId: string): SeedResult {
   projBlock.id = "seed-projects-h";
   projBlock.createdAt = now;
   projBlock.updatedAt = now;
+  projBlock.order = 0;
   const projBlock2 = newBlock(projects.id, "paragraph", "Nest pages under this one to organize projects. Drag pages in the sidebar to move them.");
   projBlock2.id = "seed-projects-p";
   projBlock2.createdAt = now;
   projBlock2.updatedAt = now;
+  projBlock2.order = 1;
 
   const persBlock = newBlock(personal.id, "heading1", "Personal");
   persBlock.id = "seed-personal-h";
   persBlock.createdAt = now;
   persBlock.updatedAt = now;
+  persBlock.order = 0;
 
   const task = newTask(workspaceId, "Take a tour of Locus", welcome.id);
   task.id = "seed-task-tour";

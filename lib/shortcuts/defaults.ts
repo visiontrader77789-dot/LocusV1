@@ -235,4 +235,21 @@ export const BUILTIN_SHORTCUTS: ShortcutDef[] = [
     editorOwned: true,
     combos: [{ key: "3", mod: true, alt: true }],
   },
+  {
+    id: "editor-undo",
+    label: "Undo",
+    group: "Editor",
+    editorOwned: true,
+    combos: [{ key: "z", mod: true }],
+  },
+  {
+    id: "editor-redo",
+    label: "Redo",
+    group: "Editor",
+    editorOwned: true,
+    combos: [
+      { key: "y", mod: true },
+      { key: "z", mod: true, shift: true },
+    ],
+  },
 ];

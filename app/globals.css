@@ -417,6 +417,138 @@ select {
   border-bottom-color: transparent;
 }
 
+/* ---- Callout blocks ------------------------------------------------------ */
+
+.editor-callout {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin: 6px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.editor-callout::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--ink-3);
+}
+.editor-callout[data-callout="info"]::before    { background: var(--accent); }
+.editor-callout[data-callout="success"]::before { background: #2f9e57; }
+.editor-callout[data-callout="warning"]::before { background: var(--warn); }
+.editor-callout[data-callout="danger"]::before  { background: var(--danger); }
+.editor-callout[data-callout="tip"]::before     { background: #8a63e8; }
+.editor-callout[data-callout="note"]::before    { background: #5b7ba0; }
+[data-theme="dark"] .editor-callout[data-callout="success"]::before { background: #4cc37a; }
+[data-theme="dark"] .editor-callout[data-callout="tip"]::before     { background: #a78cff; }
+[data-theme="dark"] .editor-callout[data-callout="note"]::before    { background: #7ba3cc; }
+[data-theme="dark"] .editor-callout {
+  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
+}
+
+.callout-type-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  margin-top: 1px;
+  border-radius: 7px;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.callout-type-btn:hover {
+  background: var(--surface-3);
+}
+
+/* ---- Code block header ---------------------------------------------------- */
+
+.code-block {
+  margin: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.code-lang-select {
+  appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  padding-right: 14px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%), linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+  background-position: calc(100% - 6px) 55%, calc(100% - 2px) 55%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+.code-lang-select:focus {
+  color: var(--ink);
+}
+.code-lang-select option {
+  background: var(--surface);
+  color: var(--ink);
+}
+.code-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
+  margin-left: auto;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-2);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+.code-copy-btn:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.code-copy-btn.copied {
+  color: var(--accent);
+}
+
+/* ---- Drag & drop indicator ------------------------------------------------- */
+
+.editor-drag-line {
+  height: 2px;
+  margin: -1px 0;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ---- Checkbox pop ----------------------------------------------------------- */
+
+.editor-check-pop {
+  animation: locus-pop 160ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
 /* Floating contextual formatting toolbar (selection popover) */
 .format-toolbar {
   position: fixed;
@@ -553,10 +685,14 @@ mark.hl-yellow { background: rgb(238 197 66 / 0.32); }
 mark.hl-green  { background: rgb(74 200 121 / 0.3); }
 mark.hl-pink   { background: rgb(236 128 168 / 0.3); }
 mark.hl-blue   { background: rgb(93 158 248 / 0.3); }
+mark.hl-orange { background: rgb(255 153 61 / 0.32); }
+mark.hl-purple { background: rgb(167 124 255 / 0.3); }
 mark.hl-yellow,
 mark.hl-green,
 mark.hl-pink,
-mark.hl-blue {
+mark.hl-blue,
+mark.hl-orange,
+mark.hl-purple {
   color: var(--ink);
   border-radius: 3px;
   padding: 0.5px 2px;
