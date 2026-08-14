@@ -6,14 +6,16 @@ import { newBlock } from "@/lib/core/types";
 import { useApp } from "@/lib/store/app";
 import { navigate } from "@/lib/store/router";
 import { EditorBlock, type EditorHandlers } from "./block";
-import { filterSlashItems } from "./slash-menu";
+import { filterSlashItems, type SlashCommand } from "./slash-menu";
 import {
   concatBlocks, matchBareMarker, matchDeferredBullet, matchMarkdown,
 } from "@/lib/core/rich";
+import { isoDate } from "@/lib/core/util";
+import { onRequestBlockInsert } from "@/lib/store/events";
 
 const TEXT_TYPES = new Set<BlockType>([
   "paragraph", "heading1", "heading2", "heading3",
-  "bulletList", "numberedList", "todoList", "quote", "code", "callout",
+  "bulletList", "numberedList", "todoList", "quote", "code", "callout", "toggle",
 ]);
 
 function isTextType(t: BlockType): boolean {
@@ -43,6 +45,7 @@ function classifyChange(prev: Block[], next: Block[]): ChangeKind | "none" {
       a.calloutType !== b.calloutType ||
       a.language !== b.language ||
       a.rows !== b.rows ||
+      a.collapsed !== b.collapsed ||
       a.order !== b.order
     ) {
       return "structural";
@@ -66,7 +69,7 @@ export function Editor({ pageId }: { pageId: string }) {
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
   const [slashActive, setSlashActive] = useState(0);
-  const [caretTarget, setCaretTarget] = useState<{ id: string; at: "start" | "end"; seq: number } | null>(null);
+  const [caretTarget, setCaretTarget] = useState<{ id: string; at: "start" | "end"; seq: number; mode?: "highlight" | "link" } | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<{ id: string; pos: "before" | "after" } | null>(null);
   const [pickKind, setPickKind] = useState<"image" | "file" | null>(null);
@@ -213,9 +216,9 @@ export function Editor({ pageId }: { pageId: string }) {
     return () => window.removeEventListener("dragend", onEnd);
   }, []);
 
-  const requestFocus = (id: string, at: "start" | "end") => {
+  const requestFocus = (id: string, at: "start" | "end", mode?: "highlight" | "link") => {
     setFocusedBlockId(id);
-    setCaretTarget({ id, at, seq: ++seqRef.current });
+    setCaretTarget({ id, at, seq: ++seqRef.current, mode });
   };
 
   const closeSlash = () => { setSlashQuery(null); setSlashActive(0); };
@@ -229,7 +232,29 @@ export function Editor({ pageId }: { pageId: string }) {
     requestFocus(nb.id, "end");
   };
 
-  const slashSelect = (type: BlockType) => {
+  // Command palette: insert a block (content "/" so the slash menu opens on
+  // focus) right after the focused block, or at the end if none is focused.
+  useEffect(() => {
+    return onRequestBlockInsert((req) => {
+      if (req.pageId !== pageId || req.mode !== "after-focused") return;
+      const fid = focusedIdRef.current;
+      const arr = blocksRef.current;
+      const idx = fid ? arr.findIndex((b) => b.id === fid) : -1;
+      const nb = newBlock(pageId, "paragraph", "/");
+      if (idx >= 0) {
+        insertAfter(idx, nb);
+      } else {
+        commit(() => [
+          ...blocksRef.current.map((b, i) => ({ ...b, order: i })),
+          { ...nb, order: blocksRef.current.length },
+        ]);
+        requestFocus(nb.id, "end");
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageId]);
+
+  const slashSelect = (type: SlashCommand) => {
     const fid = focusedIdRef.current;
     if (!fid) { closeSlash(); return; }
     const idx = blocksRef.current.findIndex((b) => b.id === fid);
@@ -266,12 +291,72 @@ export function Editor({ pageId }: { pageId: string }) {
       return;
     }
 
+    // ---- slash actions that act on the current block ----------------------
+    if (type === "date" || type === "time") {
+      const d = new Date();
+      const text = type === "date"
+        ? isoDate()
+        : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      commit((prev) => prev.map((b) => (b.id === fid ? { ...b, content: text, rich: [], updatedAt: Date.now() } : b)));
+      closeSlash();
+      requestFocus(fid, "end");
+      return;
+    }
+    if (type === "page-link") {
+      commit((prev) => prev.map((b) => (b.id === fid ? { ...b, content: "[[", rich: [], updatedAt: Date.now() } : b)));
+      closeSlash();
+      requestFocus(fid, "end");
+      return;
+    }
+    if (type === "highlight") {
+      commit((prev) => prev.map((b) => (b.id === fid ? { ...b, content: "", rich: [], updatedAt: Date.now() } : b)));
+      closeSlash();
+      requestFocus(fid, "end", "highlight");
+      return;
+    }
+    if (type === "link") {
+      commit((prev) => prev.map((b) => (b.id === fid ? { ...b, content: "", rich: [], updatedAt: Date.now() } : b)));
+      closeSlash();
+      requestFocus(fid, "end", "link");
+      return;
+    }
+    if (type === "clear-format") {
+      // Remove the literal "/<query>" the user typed (it may be at the start,
+      // middle or end depending on where the caret was), then clear spans.
+      const cmdText = slashRef.current.query ? `/${slashRef.current.query}` : "";
+      commit((prev) => prev.map((b) =>
+        b.id === fid
+          ? {
+              ...b,
+              content: cmdText && b.content.includes(cmdText) ? b.content.replace(cmdText, "") : b.content,
+              rich: [],
+              updatedAt: Date.now(),
+            }
+          : b,
+      ));
+      closeSlash();
+      requestFocus(fid, "end");
+      return;
+    }
+    if (type === "duplicate") {
+      closeSlash();
+      onDuplicate(fid);
+      return;
+    }
+    if (type === "delete") {
+      closeSlash();
+      onDelete(fid);
+      return;
+    }
+
+    // ---- block type conversions -------------------------------------------
     commit((prev) => prev.map((b) =>
       b.id === fid
         ? {
             ...b, type, content: "", rich: [], indent: 0, checked: false, rows: [], attachmentId: null,
             calloutType: type === "callout" ? "note" : undefined,
             language: type === "code" ? "" : undefined,
+            collapsed: type === "toggle" ? false : undefined,
             updatedAt: Date.now(),
           }
         : b,
@@ -341,6 +426,7 @@ export function Editor({ pageId }: { pageId: string }) {
             checked: type === "todoList" ? b.checked : false,
             calloutType: type === "callout" ? (b.calloutType ?? "note") : undefined,
             language: type === "code" ? (b.language ?? "") : undefined,
+            collapsed: type === "toggle" ? false : undefined,
             updatedAt: Date.now(),
           }
         : b);
@@ -480,6 +566,24 @@ export function Editor({ pageId }: { pageId: string }) {
       if (e.key === "Escape") { e.preventDefault(); closeSlash(); return; }
       if (e.key === "Tab") { e.preventDefault(); return; }
       // fall through for regular typing
+    }
+
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+      if (e.key === "Home") {
+        e.preventDefault();
+        const first = arr.find((b) => isTextType(b.type));
+        if (first) requestFocus(first.id, "start");
+        return;
+      }
+      if (e.key === "End") {
+        e.preventDefault();
+        let last: Block | undefined;
+        for (let i = arr.length - 1; i >= 0; i -= 1) {
+          if (isTextType(arr[i].type)) { last = arr[i]; break; }
+        }
+        if (last) requestFocus(last.id, "end");
+        return;
+      }
     }
 
     if (e.key === "Enter" && !e.shiftKey && block.type !== "code" && block.type !== "math") {

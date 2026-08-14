@@ -62,6 +62,7 @@ export function migrateBlocks(blocks: Block[]): Block[] {
     rows: Array.isArray(b.rows) ? b.rows : [],
     calloutType: b.type === "callout" ? (CALLOUT_TYPES.includes(b.calloutType as CalloutType) ? (b.calloutType as CalloutType) : "note") : undefined,
     language: b.type === "code" ? (typeof b.language === "string" ? b.language : "") : undefined,
+    collapsed: b.type === "toggle" ? b.collapsed === true : undefined,
     order: typeof b.order === "number" ? b.order : b.createdAt,
   }));
 }

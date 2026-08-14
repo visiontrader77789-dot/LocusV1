@@ -372,6 +372,20 @@ select {
   user-select: none;
 }
 
+/* ---- Toggle blocks --------------------------------------------------------- */
+
+.toggle-chevron {
+  outline: none;
+}
+.toggle-chevron:focus-visible {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.editor-toggle-collapsed {
+  max-height: 1.7em;
+  overflow: hidden;
+}
+
 .inline-link {
   color: var(--accent);
   text-decoration: underline;

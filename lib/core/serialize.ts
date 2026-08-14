@@ -150,7 +150,7 @@ function idStr(v: unknown, fallback: () => string): string {
 const BLOCK_TYPES = new Set([
   "paragraph", "heading1", "heading2", "heading3", "bulletList",
   "numberedList", "todoList", "quote", "code", "divider", "image",
-  "file", "table", "math", "callout",
+  "file", "table", "math", "callout", "toggle",
 ]);
 
 const HIGHLIGHT_COLORS = new Set(["yellow", "green", "pink", "blue", "orange", "purple"]);
@@ -261,6 +261,7 @@ function validateBlock(v: unknown, errors: string[]): Block | null {
     updatedAt: num(v.updatedAt),
     calloutType: CALLOUT_TYPES.includes(calloutTypeRaw as CalloutType) ? (calloutTypeRaw as CalloutType) : undefined,
     language: language || undefined,
+    collapsed: type === "toggle" ? v.collapsed === true : undefined,
   };
 }
 

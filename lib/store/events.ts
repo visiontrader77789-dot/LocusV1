@@ -67,3 +67,22 @@ export function onRequestPageRename(fn: () => void): () => void {
   window.addEventListener(PAGE_RENAME, handler);
   return () => window.removeEventListener(PAGE_RENAME, handler);
 }
+
+const BLOCK_INSERT = "locus:block-insert";
+
+export interface BlockInsertRequest {
+  pageId: string;
+  /** Insert a new block right after the currently focused block. */
+  mode: "after-focused";
+}
+
+/** Ask the editor for `pageId` to insert a new block (command palette). */
+export function requestBlockInsert(req: BlockInsertRequest): void {
+  window.dispatchEvent(new CustomEvent(BLOCK_INSERT, { detail: req }));
+}
+
+export function onRequestBlockInsert(fn: (req: BlockInsertRequest) => void): () => void {
+  const handler = (e: Event) => fn((e as CustomEvent).detail as BlockInsertRequest);
+  window.addEventListener(BLOCK_INSERT, handler);
+  return () => window.removeEventListener(BLOCK_INSERT, handler);
+}

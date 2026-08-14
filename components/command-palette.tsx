@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/lib/store/app";
 import { searchIndex, groupResults, type SearchResult } from "@/lib/core/search";
-import { navigate } from "@/lib/store/router";
-import { closePalette, onPaletteClose, onPaletteOpen } from "@/lib/store/events";
+import { navigate, parseHash, type Route } from "@/lib/store/router";
+import { closePalette, onPaletteClose, onPaletteOpen, requestBlockInsert, toggleSidebar } from "@/lib/store/events";
 import { requestShortcutsHelpFocus } from "@/lib/shortcuts/registry";
 import { formatShortcut } from "@/lib/shortcuts/platform";
-import { IconFiles, IconFolder, IconInfo, IconPage, IconSearch, IconTasks, IconUpload, IconX } from "@/components/icons";
+import { IconChevronLeft, IconFiles, IconFolder, IconInfo, IconPage, IconPlus, IconSearch, IconTasks, IconUpload, IconX } from "@/components/icons";
 import { LocusMark } from "@/components/mark";
 
 type Mode = "search" | "task" | "page";
@@ -21,6 +21,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<Mode>("search");
   const [active, setActive] = useState(0);
+  const [route, setRoute] = useState<Route>(() => parseHash());
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -30,6 +31,7 @@ export function CommandPalette() {
     setMode(mode);
     setQuery("");
     setActive(0);
+    setRoute(parseHash());
   }), []);
   useEffect(() => onPaletteClose(() => setOpen(false)), []);
   useEffect(() => {
@@ -166,6 +168,18 @@ export function CommandPalette() {
       icon: <IconInfo size={15} />,
       kbd: formatShortcut({ key: "/", mod: true }),
       run: () => { setOpen(false); closePalette(); requestShortcutsHelpFocus(); navigate({ name: "settings" }); },
+    },
+    ...(route.name === "page"
+      ? [{
+          label: "Insert block",
+          icon: <IconPlus size={15} />,
+          run: () => { setOpen(false); closePalette(); requestBlockInsert({ pageId: route.id, mode: "after-focused" }); },
+        }]
+      : []),
+    {
+      label: "Toggle sidebar",
+      icon: <IconChevronLeft size={15} />,
+      run: () => { setOpen(false); closePalette(); toggleSidebar(); },
     },
   ];
 

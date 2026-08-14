@@ -26,7 +26,8 @@ export type BlockType =
   | "file"
   | "table"
   | "math"
-  | "callout";
+  | "callout"
+  | "toggle";
 
 /** Text marker highlight colors. Must stay readable in light AND dark mode. */
 export type HighlightColor = "yellow" | "green" | "pink" | "blue" | "orange" | "purple";
@@ -133,6 +134,8 @@ export interface Block {
   calloutType?: CalloutType;
   /** code blocks only: the language label used by the code header selector. */
   language?: string;
+  /** toggle blocks only: whether the body is collapsed. */
+  collapsed?: boolean;
   /** Sibling ordering within a page. */
   order: number;
   createdAt: number;

@@ -5,11 +5,11 @@ import type { Block, BlockType, CalloutType, FileRef, HighlightColor, InlineSpan
 import { formatBytes, isValidLinkTarget } from "@/lib/core/util";
 import { escapeHtml, readBlock, renderMath, richHtml, sanitizePasteHtml } from "@/lib/core/rich";
 import {
-  IconCheck, IconChevronDown, IconChevronLeft, IconChevronUp, IconCopy, IconDownload,
+  IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconChevronUp, IconCopy, IconDownload,
   IconFileOther, IconGrip, IconPen, IconTrash,
 } from "@/components/icons";
 import { Menu, MenuItem, MenuSeparator } from "@/components/primitives";
-import { SlashMenu } from "./slash-menu";
+import { SlashMenu, type SlashCommand } from "./slash-menu";
 import { FormatToolbar, type FormatActive, type FormatCommand } from "./format-toolbar";
 
 export interface EditorHandlers {
@@ -32,7 +32,7 @@ export interface EditorHandlers {
   onBackspaceAtStart: (blockId: string) => void;
   onOpenLink: (title: string) => void;
   getBlobUrl: (file: FileRef) => Promise<string | null>;
-  slashSelect: (type: Block["type"]) => void;
+  slashSelect: (type: SlashCommand) => void;
   slashSetActive: (i: number) => void;
   slashClose: () => void;
 }
@@ -46,7 +46,7 @@ export interface EditorBlockProps {
   focused: boolean;
   slash: { query: string; active: number } | null;
   /** focus request dispatched by the editor (e.g. after creating a block) */
-  caretTarget: { id: string; at: "start" | "end"; seq: number } | null;
+  caretTarget: { id: string; at: "start" | "end"; seq: number; mode?: "highlight" | "link" } | null;
   dragOverPos: "before" | "after" | null;
   firstBlock: boolean;
   lastBlock: boolean;
@@ -115,6 +115,25 @@ function selectionHighlightColor(_el: HTMLElement): HighlightColor | null {
   return m ? (m[1] as HighlightColor) : null;
 }
 
+function unwrapMark(mark: HTMLElement): void {
+  const parent = mark.parentNode;
+  if (!parent) return;
+  while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+  parent.removeChild(mark);
+}
+
+/** Merge adjacent sibling marks that share the same color (cosmetic cleanup). */
+function mergeAdjacentMarks(el: HTMLElement): void {
+  const marks = Array.from(el.querySelectorAll("mark"));
+  for (const mark of marks) {
+    const next = mark.nextSibling;
+    if (next instanceof Element && next.tagName === "MARK" && next.className === mark.className) {
+      while (next.firstChild) mark.appendChild(next.firstChild);
+      next.remove();
+    }
+  }
+}
+
 /** Unwrap <mark> highlights that overlap the current selection (clear formatting). */
 function unwrapHighlightsInSelection(el: HTMLElement): void {
   const sel = window.getSelection();
@@ -123,8 +142,21 @@ function unwrapHighlightsInSelection(el: HTMLElement): void {
   const marks = Array.from(el.querySelectorAll("mark"));
   for (const mark of marks) {
     if (!range.intersectsNode(mark)) continue;
-    const parent = mark.parentNode;
-    if (parent) parent.replaceChild(document.createTextNode(mark.textContent ?? ""), mark);
+    unwrapMark(mark);
+  }
+  mergeAdjacentMarks(el);
+}
+
+// removeFormat can leave empty inline wrappers (<b></b>); drop them so the
+// model serializes cleanly. Process deepest-first: querySelectorAll returns
+// pre-order (outermost first), so a nested empty like <b><i></i></b> would be
+// skipped — the outer still has a child while the inner is removed later.
+function stripEmptyInlineElements(el: HTMLElement): void {
+  const empty = Array.from(el.querySelectorAll("b, i, u, s, strike, em, strong, code, mark")).reverse();
+  for (const node of empty) {
+    if (node.textContent === "" && node.childElementCount === 0) {
+      node.parentNode?.removeChild(node);
+    }
   }
 }
 
@@ -252,6 +284,10 @@ export const EditorBlock = memo(function EditorBlock(props: EditorBlockProps) {
   }, [block.id, onContentChange]);
 
   // ---- programmatic focus (new block, merging, transforms) ----------------
+  // Only re-runs when a new focus is requested (caretTarget identity changes);
+  // content/rich changes while typing are already reflected in the DOM and must
+  // not re-trigger an innerHTML rebuild (it would snap the caret and race with
+  // live selections).
   useEffect(() => {
     if (!caretTarget) return;
     const el = (elRef.current ?? taRef.current) as HTMLElement | null;
@@ -264,17 +300,43 @@ export const EditorBlock = memo(function EditorBlock(props: EditorBlockProps) {
       if (el instanceof HTMLTextAreaElement) {
         const pos = caretTarget.at === "start" ? 0 : el.value.length;
         el.setSelectionRange(pos, pos);
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
         return;
       }
       const sel = window.getSelection();
       const range = document.createRange();
       range.selectNodeContents(el);
       range.collapse(caretTarget.at === "start");
-      sel?.removeAllRanges();
-      sel?.addRange(range);
+      if (caretTarget.mode === "highlight") {
+        const mark = document.createElement("mark");
+        mark.className = "hl-yellow";
+        range.insertNode(mark);
+        const r2 = document.createRange();
+        r2.selectNodeContents(mark);
+        r2.collapse(true);
+        const s2 = window.getSelection();
+        s2?.removeAllRanges();
+        s2?.addRange(r2);
+      } else if (caretTarget.mode === "link") {
+        const a = document.createElement("a");
+        a.className = "inline-link";
+        a.setAttribute("data-link", "https://");
+        a.textContent = "https://";
+        range.insertNode(a);
+        const r2 = document.createRange();
+        r2.setStart(a, 1);
+        r2.collapse(true);
+        const s2 = window.getSelection();
+        s2?.removeAllRanges();
+        s2?.addRange(r2);
+      } else {
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }, 0);
     return () => window.clearTimeout(t);
-  }, [caretTarget, block.id, block.content, block.rich]);
+  }, [caretTarget, block.id]);
 
   // ---- render: rich HTML (with chips) while blurred, untouched while focused
   useEffect(() => {
@@ -417,7 +479,6 @@ export const EditorBlock = memo(function EditorBlock(props: EditorBlockProps) {
     // Collapsed caret: open an empty code run so typing is styled as code.
     const code = document.createElement("code");
     code.className = "editor-inline-code";
-    code.textContent = "\u200b";
     range.insertNode(code);
     const sel2 = window.getSelection();
     const r2 = document.createRange();
@@ -451,44 +512,56 @@ export const EditorBlock = memo(function EditorBlock(props: EditorBlockProps) {
     const startEl = range.startContainer instanceof Element
       ? range.startContainer
       : range.startContainer.parentElement;
-    const markEl = startEl?.closest("mark");
+
     if (!color) {
-      // Clear: unwrap any mark the caret/selection sits in.
-      if (markEl) {
-        const parent = markEl.parentNode;
-        if (parent) {
-          while (markEl.firstChild) parent.insertBefore(markEl.firstChild, markEl);
-          parent.removeChild(markEl);
+      // Clear: unwrap every mark the caret/selection touches.
+      if (range.collapsed) {
+        const markEl = startEl?.closest("mark");
+        if (markEl) unwrapMark(markEl);
+      } else {
+        const marks = Array.from(el.querySelectorAll("mark"));
+        for (const mark of marks) {
+          if (range.intersectsNode(mark)) unwrapMark(mark);
         }
       }
+      mergeAdjacentMarks(el);
       return;
     }
-    if (markEl) {
-      markEl.className = `hl-${color}`;
-      return;
-    }
-    if (!range.collapsed) {
+
+    if (range.collapsed) {
+      const markEl = startEl?.closest("mark");
+      if (markEl) {
+        // Caret is already inside a highlight: retarget its color.
+        markEl.className = `hl-${color}`;
+        return;
+      }
+      // Open an empty highlight run so typing stays highlighted.
       const mark = document.createElement("mark");
       mark.className = `hl-${color}`;
-      mark.textContent = range.toString();
-      range.deleteContents();
       range.insertNode(mark);
       const sel2 = window.getSelection();
       const r2 = document.createRange();
-      r2.setStartAfter(mark);
+      r2.selectNodeContents(mark);
       r2.collapse(true);
       sel2?.removeAllRanges();
       sel2?.addRange(r2);
       return;
     }
-    // Collapsed caret: open an empty highlight run so typing stays highlighted.
+
+    // Non-collapsed: wrap the selection contents in a mark WITHOUT flattening
+    // the inner formatting (bold/italic/code/links must survive).
+    const frag = range.extractContents();
+    // Unwrap any existing highlight marks inside the selection so the new
+    // color applies cleanly instead of nesting marks inside marks.
+    frag.querySelectorAll("mark").forEach((m) => unwrapMark(m as HTMLElement));
     const mark = document.createElement("mark");
     mark.className = `hl-${color}`;
-    mark.textContent = "\u200b";
+    mark.appendChild(frag);
     range.insertNode(mark);
+    mergeAdjacentMarks(el);
     const sel2 = window.getSelection();
     const r2 = document.createRange();
-    r2.selectNodeContents(mark);
+    r2.setStartAfter(mark);
     r2.collapse(true);
     sel2?.removeAllRanges();
     sel2?.addRange(r2);
@@ -509,6 +582,7 @@ export const EditorBlock = memo(function EditorBlock(props: EditorBlockProps) {
     } else if (cmd === "clear") {
       document.execCommand("removeFormat", false);
       unwrapHighlightsInSelection(el);
+      stripEmptyInlineElements(el);
     } else {
       document.execCommand(cmd, false);
     }
@@ -587,12 +661,24 @@ export const EditorBlock = memo(function EditorBlock(props: EditorBlockProps) {
       onBackspaceAtStart(block.id);
       return;
     }
-    if (el && e.key === "ArrowUp" && caretEdges(el).atStart) {
+    // While the slash menu is open the vertical arrows navigate the menu, so
+    // don't let the edge handlers move focus between blocks.
+    if (el && !slash && e.key === "ArrowUp" && caretEdges(el).atStart) {
       e.preventDefault();
       onRequestFocus(block.id, "start");
       return;
     }
-    if (el && e.key === "ArrowDown" && caretEdges(el).atEnd) {
+    if (el && !slash && e.key === "ArrowDown" && caretEdges(el).atEnd) {
+      e.preventDefault();
+      onRequestFocus(block.id, "end");
+      return;
+    }
+    if (el && e.key === "ArrowLeft" && caretEdges(el).atStart) {
+      e.preventDefault();
+      onRequestFocus(block.id, "start");
+      return;
+    }
+    if (el && e.key === "ArrowRight" && caretEdges(el).atEnd) {
       e.preventDefault();
       onRequestFocus(block.id, "end");
       return;
@@ -608,6 +694,16 @@ export const EditorBlock = memo(function EditorBlock(props: EditorBlockProps) {
       return;
     }
     if (ta && e.key === "ArrowDown" && ta.selectionEnd === ta.value.length) {
+      e.preventDefault();
+      onRequestFocus(block.id, "end");
+      return;
+    }
+    if (ta && e.key === "ArrowLeft" && ta.selectionStart === 0) {
+      e.preventDefault();
+      onRequestFocus(block.id, "start");
+      return;
+    }
+    if (ta && e.key === "ArrowRight" && ta.selectionEnd === ta.value.length) {
       e.preventDefault();
       onRequestFocus(block.id, "end");
       return;
@@ -856,6 +952,68 @@ export const EditorBlock = memo(function EditorBlock(props: EditorBlockProps) {
             onKeyDown={onKeyDownLocal}
           />
         </div>
+        {selRect && (
+          <FormatToolbar
+            x={selRect.x}
+            y={selRect.y}
+            active={fmtActive}
+            onFormat={runFormat}
+            linkMode={linkMode}
+            linkValue={linkValue}
+            linkError={linkError}
+            onLinkValue={(v) => { setLinkValue(v); setLinkError(null); }}
+            onLinkApply={applyLink}
+            onLinkCancel={() => { setLinkMode(false); linkRangeRef.current = null; setSelRect(null); }}
+          />
+        )}
+        {slash && (
+          <SlashMenu
+            query={slash.query}
+            active={slash.active}
+            setActive={slashSetActive}
+            onSelect={slashSelect}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Toggle block -------------------------------------------------------------
+  if (block.type === "toggle") {
+    const collapsed = block.collapsed ?? false;
+    return (
+      <div className="editor-block-row group relative flex items-start gap-1.5" style={wrapperStyle}>
+        <Handle block={block} handlers={handlers} firstBlock={firstBlock} lastBlock={lastBlock} />
+        {dragIndicator}
+        <button
+          type="button"
+          aria-label={collapsed ? "Expand toggle" : "Collapse toggle"}
+          aria-expanded={!collapsed}
+          onClick={() => onPatch(block.id, { collapsed: !collapsed })}
+          className="toggle-chevron mt-[7px] flex-none w-4 h-4 flex items-center justify-center rounded-[4px] text-ink-3 hover:text-ink hover:bg-surface-2 transition-colors"
+        >
+          <IconChevronRight size={13} className={collapsed ? "" : "rotate-90 transition-transform"} />
+        </button>
+        <div
+          ref={elRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="false"
+          aria-label="Toggle text"
+          className={`editor-block editor-block-editable flex-1 editor-paragraph ${collapsed ? "editor-toggle-collapsed" : ""}`}
+          data-empty={block.content === "" ? "true" : undefined}
+          data-placeholder={placeholder}
+          onFocus={() => {
+            if (block.collapsed) onPatch(block.id, { collapsed: false });
+            handleFocus();
+          }}
+          onBlur={handleBlur}
+          onInput={handleInput}
+          onClick={handleClick}
+          onPaste={handlePaste}
+          onKeyDown={onKeyDownLocal}
+        />
         {selRect && (
           <FormatToolbar
             x={selRect.x}

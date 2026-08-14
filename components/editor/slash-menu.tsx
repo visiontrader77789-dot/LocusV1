@@ -3,12 +3,29 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { BlockType } from "@/lib/core/types";
 import {
-  IconChecklist, IconCode, IconFileText, IconImage, IconInfo, IconList,
+  IconCalendar, IconChecklist, IconClock, IconCode, IconCopy, IconEraser,
+  IconFileText, IconHighlighter, IconImage, IconInfo, IconLink, IconList,
   IconListNumbered, IconMath, IconMinus, IconPage, IconQuote, IconTable,
+  IconTrash, IconTriangle,
 } from "@/components/icons";
 
+/** Slash commands that aren't block types (they act on the current block). */
+export type SlashAction =
+  | "link" | "page-link" | "date" | "time" | "highlight"
+  | "clear-format" | "duplicate" | "delete";
+
+export type SlashCommand = BlockType | SlashAction;
+
+export const SLASH_ACTIONS = new Set<string>([
+  "link", "page-link", "date", "time", "highlight", "clear-format", "duplicate", "delete",
+]);
+
+export function isSlashAction(t: SlashCommand): t is SlashAction {
+  return SLASH_ACTIONS.has(t);
+}
+
 export interface SlashItem {
-  type: BlockType;
+  type: SlashCommand;
   label: string;
   hint: string;
   icon: React.ReactNode;
@@ -20,32 +37,52 @@ export const SLASH_ITEMS: SlashItem[] = [
   { type: "heading2", label: "Heading 2", hint: "Section title", icon: <IconPage size={15} /> },
   { type: "heading3", label: "Heading 3", hint: "Subsection", icon: <IconPage size={15} /> },
   { type: "todoList", label: "To-do", hint: "Checkbox list", icon: <IconChecklist size={15} /> },
+  { type: "todoList", label: "Checklist", hint: "Tasks with checkboxes", icon: <IconChecklist size={15} /> },
   { type: "bulletList", label: "Bullet list", hint: "Simple list", icon: <IconList size={15} /> },
   { type: "numberedList", label: "Numbered list", hint: "Ordered list", icon: <IconListNumbered size={15} /> },
   { type: "quote", label: "Quote", hint: "A pull quote", icon: <IconQuote size={15} /> },
   { type: "callout", label: "Callout", hint: "A highlighted note", icon: <IconInfo size={15} /> },
+  { type: "toggle", label: "Toggle", hint: "Collapsible block", icon: <IconTriangle size={15} /> },
   { type: "code", label: "Code", hint: "Monospace block", icon: <IconCode size={15} /> },
   { type: "math", label: "Math", hint: "LaTeX equation", icon: <IconMath size={15} /> },
   { type: "divider", label: "Divider", hint: "A horizontal rule", icon: <IconMinus size={15} /> },
+  { type: "table", label: "Table", hint: "Simple grid", icon: <IconTable size={15} /> },
   { type: "image", label: "Image", hint: "An image from your files", icon: <IconImage size={15} /> },
   { type: "file", label: "File", hint: "Attach a file", icon: <IconFileText size={15} /> },
-  { type: "table", label: "Table", hint: "Simple grid", icon: <IconTable size={15} /> },
+  { type: "link", label: "Link", hint: "Add a hyperlink", icon: <IconLink size={15} /> },
+  { type: "page-link", label: "Page link", hint: "Link to another page", icon: <IconPage size={15} /> },
+  { type: "date", label: "Date", hint: "Insert today's date", icon: <IconCalendar size={15} /> },
+  { type: "time", label: "Time", hint: "Insert current time", icon: <IconClock size={15} /> },
+  { type: "highlight", label: "Highlight", hint: "Highlight what you type", icon: <IconHighlighter size={15} /> },
+  { type: "clear-format", label: "Clear formatting", hint: "Remove inline formatting", icon: <IconEraser size={15} /> },
+  { type: "duplicate", label: "Duplicate", hint: "Duplicate this block", icon: <IconCopy size={15} /> },
+  { type: "delete", label: "Delete", hint: "Delete this block", icon: <IconTrash size={15} /> },
 ];
 
 const KEYWORDS: Record<string, string> = {
   "/text": "text paragraph plain body",
   "/heading": "heading h1 title",
   "/todo": "todo checklist task checkbox",
+  "/checklist": "todo checklist task checkbox",
   "/bullet": "bullet ul list unordered",
   "/numbered": "numbered ol order list ordered",
   "/quote": "quote blockquote pull",
   "/callout": "callout note highlight box tip warning info",
+  "/toggle": "toggle collapsible fold hide show disclosure",
   "/code": "code block monospace pre",
   "/math": "math latex equation formula",
   "/divider": "divider hr line rule separator",
   "/image": "image img picture",
   "/file": "file attach attachment document",
   "/table": "table grid",
+  "/link": "link url hyperlink anchor",
+  "/page-link": "page link reference backlink wikilink",
+  "/date": "date today calendar day",
+  "/time": "time clock hour minute now",
+  "/highlight": "highlight marker mark color pen",
+  "/clear-format": "clear format remove formatting erase",
+  "/duplicate": "duplicate copy clone",
+  "/delete": "delete remove trash discard",
 };
 
 export function filterSlashItems(query: string): SlashItem[] {
@@ -66,7 +103,7 @@ export function SlashMenu({
   query: string;
   active: number;
   setActive: (i: number) => void;
-  onSelect: (type: BlockType) => void;
+  onSelect: (type: SlashCommand) => void;
 }) {
   const items = useMemo(() => filterSlashItems(query), [query]);
   const ref = useRef<HTMLDivElement>(null);
@@ -98,7 +135,7 @@ export function SlashMenu({
       <div className="px-2.5 pt-1.5 pb-1 eyebrow">Insert block</div>
       {items.map((item, i) => (
         <button
-          key={item.type}
+          key={`${item.type}:${item.label}`}
           type="button"
           role="option"
           data-si={i}
