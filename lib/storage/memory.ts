@@ -1,7 +1,7 @@
 /**
  * In-memory StorageBackend. Used by tests and during SSR/hydration safety.
  */
-import type { StorageBackend, StorageEstimate } from "./backend";
+import type { StorageBackend, StorageEstimate, TransactOp } from "./backend";
 
 export class MemoryBackend implements StorageBackend {
   readonly name = "memory";
@@ -45,6 +45,44 @@ export class MemoryBackend implements StorageBackend {
     const prefix = `${table}:`;
     for (const k of [...this.kv.keys()]) {
       if (k.startsWith(prefix)) this.kv.delete(k);
+    }
+  }
+
+  async transact(ops: readonly TransactOp[]): Promise<void> {
+    if (ops.length === 0) return;
+    const kvSnapshot = new Map(this.kv);
+    const blobsSnapshot = new Map(this.blobs);
+    try {
+      for (const op of ops) {
+        switch (op.op) {
+          case "put":
+            this.kv.set(MemoryBackend.key(op.table, op.key), op.value);
+            break;
+          case "delete":
+            this.kv.delete(MemoryBackend.key(op.table, op.key));
+            break;
+          case "putBlob":
+            this.blobs.set(op.key, op.blob);
+            break;
+          case "deleteBlob":
+            this.blobs.delete(op.key);
+            break;
+          case "clearTable": {
+            const prefix = `${op.table}:`;
+            for (const k of [...this.kv.keys()]) {
+              if (k.startsWith(prefix)) this.kv.delete(k);
+            }
+            break;
+          }
+          case "clearBlobs":
+            this.blobs.clear();
+            break;
+        }
+      }
+    } catch (e) {
+      this.kv = kvSnapshot;
+      this.blobs = blobsSnapshot;
+      throw e;
     }
   }
 

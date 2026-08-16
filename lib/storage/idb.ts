@@ -3,7 +3,7 @@
  * One database ("locus") with two object stores: a key-value store for rows
  * (keyed by `${table}:${id}`) and a blob store for uploaded files.
  */
-import type { StorageBackend, StorageEstimate } from "./backend";
+import type { StorageBackend, StorageEstimate, TransactOp } from "./backend";
 
 const DB_NAME = "locus";
 const KV_STORE = "kv";
@@ -11,6 +11,11 @@ const BLOB_STORE = "blobs";
 const DB_VERSION = 1;
 
 type IDB = typeof indexedDB;
+
+/** Matches every key starting with `prefix` (string keys only). */
+function prefixRange(prefix: string): IDBKeyRange {
+  return IDBKeyRange.bound(prefix, `${prefix}\uffff`);
+}
 
 export class IdbBackend implements StorageBackend {
   readonly name = "idb";
@@ -77,39 +82,31 @@ export class IdbBackend implements StorageBackend {
 
   async getAll<T>(table: string): Promise<T[]> {
     if (!this.available) return [];
-    try {
-      const [tx, store] = await this.tx(KV_STORE, "readonly");
-      const out: T[] = [];
-      const req = store.openCursor();
-      await new Promise<void>((resolve, reject) => {
-        req.onsuccess = () => {
-          const cursor = req.result;
-          if (cursor) {
-            const key = cursor.key as string;
-            if (key.startsWith(`${table}:`)) out.push(cursor.value as T);
-            cursor.continue();
-          } else {
-            resolve();
-          }
-        };
-        req.onerror = () => reject(req.error ?? new Error("Local database error"));
-      });
-      await txComplete(tx);
-      return out;
-    } catch {
-      return [];
-    }
+    const [tx, store] = await this.tx(KV_STORE, "readonly");
+    const out: T[] = [];
+    const req = store.openCursor();
+    await new Promise<void>((resolve, reject) => {
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          const key = cursor.key as string;
+          if (key.startsWith(`${table}:`)) out.push(cursor.value as T);
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      req.onerror = () => reject(req.error ?? new Error("Local database error"));
+    });
+    await txComplete(tx);
+    return out;
   }
 
   async get<T>(table: string, key: string): Promise<T | null> {
     if (!this.available) return null;
-    try {
-      const [tx, store] = await this.tx(KV_STORE, "readonly");
-      const value = await this.commit(store.get(`${table}:${key}`), tx);
-      return (value as T | undefined) ?? null;
-    } catch {
-      return null;
-    }
+    const [tx, store] = await this.tx(KV_STORE, "readonly");
+    const value = await this.commit(store.get(`${table}:${key}`), tx);
+    return (value as T | undefined) ?? null;
   }
 
   async put<T>(table: string, key: string, value: T): Promise<void> {
@@ -134,21 +131,42 @@ export class IdbBackend implements StorageBackend {
   async clear(table: string): Promise<void> {
     if (!this.available) return;
     const [tx, store] = await this.tx(KV_STORE, "readwrite");
-    const req = store.openCursor();
-    await new Promise<void>((resolve, reject) => {
-      req.onsuccess = () => {
-        const cursor = req.result;
-        if (cursor) {
-          const key = cursor.key as string;
-          if (key.startsWith(`${table}:`)) cursor.delete();
-          cursor.continue();
-        } else {
-          resolve();
-        }
-      };
-      req.onerror = () => reject(req.error ?? new Error("Local database error"));
-    });
-    await txComplete(tx);
+    // One range delete — never a cursor: cursor iteration interleaves with
+    // other queued requests nondeterministically and can erase writes made
+    // later in the same transaction.
+    await this.commit(store.delete(prefixRange(`${table}:`)), tx);
+  }
+
+  async transact(ops: readonly TransactOp[]): Promise<void> {
+    if (!this.available || ops.length === 0) return;
+    const db = await this.db();
+    const transaction = db.transaction([KV_STORE, BLOB_STORE], "readwrite");
+    const kv = transaction.objectStore(KV_STORE);
+    const blobs = transaction.objectStore(BLOB_STORE);
+    for (const op of ops) {
+      switch (op.op) {
+        case "put":
+          kv.put(op.value, `${op.table}:${op.key}`);
+          break;
+        case "delete":
+          kv.delete(`${op.table}:${op.key}`);
+          break;
+        case "putBlob":
+          blobs.put(op.blob, op.key);
+          break;
+        case "deleteBlob":
+          blobs.delete(op.key);
+          break;
+        case "clearTable":
+          // Single range delete per table (see note in `clear`).
+          kv.delete(prefixRange(`${op.table}:`));
+          break;
+        case "clearBlobs":
+          blobs.clear();
+          break;
+      }
+    }
+    await txComplete(transaction);
   }
 
   async getBlob(key: string): Promise<Blob | null> {

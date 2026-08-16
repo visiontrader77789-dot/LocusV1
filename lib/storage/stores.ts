@@ -6,7 +6,7 @@
  * Repository class. Components never touch the backend directly — they use
  * these repositories through the app store.
  */
-import type { StorageBackend } from "./backend";
+import type { StorageBackend, TransactOp } from "./backend";
 import type {
   Block,
   FileRef,
@@ -27,6 +27,18 @@ const T_FOLDERS = "folders";
 const T_SETTINGS = "settings";
 
 const WORKSPACE_KEY = "main";
+const SNAPSHOT_KEY = "snapshot";
+
+/** Everything needed to persist a complete workspace state. */
+export interface WorkspaceBundle {
+  workspace: Workspace;
+  pages: Page[];
+  blocks: Block[];
+  tasks: Task[];
+  files: FileRef[];
+  folders: Folder[];
+  settings: Settings;
+}
 
 export class Repository {
   constructor(readonly backend: StorageBackend) {}
@@ -143,20 +155,55 @@ export class Repository {
     await this.backend.put(T_SETTINGS, "settings", settings);
   }
 
+  // ---- snapshot / backup ----
+  async getSnapshot(): Promise<string | null> {
+    return this.backend.get<string>(T_WORKSPACE, SNAPSHOT_KEY);
+  }
+  async saveSnapshot(text: string): Promise<void> {
+    await this.backend.put(T_WORKSPACE, SNAPSHOT_KEY, text);
+  }
+
   // ---- lifecycle ----
-  /** Remove every record for a workspace (used by reset / re-import). */
+  /**
+   * Atomically replace the entire workspace: clear every row store and the
+   * blob store, then write the new rows in one transaction. A failure leaves
+   * the previous workspace fully intact — nothing is pre-cleared.
+   */
+  async replaceWorkspace(bundle: WorkspaceBundle): Promise<void> {
+    const ops: TransactOp[] = [
+      { op: "clearTable", table: T_PAGES },
+      { op: "clearTable", table: T_BLOCKS },
+      { op: "clearTable", table: T_TASKS },
+      { op: "clearTable", table: T_FILES },
+      { op: "clearTable", table: T_FOLDERS },
+      { op: "clearTable", table: T_SETTINGS },
+      { op: "clearTable", table: T_WORKSPACE },
+      { op: "clearBlobs" },
+    ];
+    const addRows = <T>(table: string, rows: Array<[string, T]>) => {
+      for (const [key, value] of rows) ops.push({ op: "put", table, key, value });
+    };
+    addRows(T_WORKSPACE, [[WORKSPACE_KEY, bundle.workspace]]);
+    addRows(T_SETTINGS, [["settings", bundle.settings]]);
+    addRows(T_PAGES, bundle.pages.map((p) => [p.id, p]));
+    addRows(T_BLOCKS, bundle.blocks.map((b) => [b.id, b]));
+    addRows(T_TASKS, bundle.tasks.map((t) => [t.id, t]));
+    addRows(T_FILES, bundle.files.map((f) => [f.id, f]));
+    addRows(T_FOLDERS, bundle.folders.map((f) => [f.id, f]));
+    await this.backend.transact(ops);
+  }
+
+  /** Atomically remove every record (used by reset). */
   async clearWorkspace(): Promise<void> {
-    await Promise.all([
-      this.backend.clear(T_PAGES),
-      this.backend.clear(T_BLOCKS),
-      this.backend.clear(T_TASKS),
-      this.backend.clear(T_FILES),
-      this.backend.clear(T_FOLDERS),
-      this.backend.clear(T_SETTINGS),
-      this.backend.clear(T_WORKSPACE),
-      // Purge the blob store too; otherwise re-importing or resetting a
-      // workspace would leave every uploaded file behind forever.
-      this.backend.clearBlobs(),
+    await this.backend.transact([
+      { op: "clearTable", table: T_PAGES },
+      { op: "clearTable", table: T_BLOCKS },
+      { op: "clearTable", table: T_TASKS },
+      { op: "clearTable", table: T_FILES },
+      { op: "clearTable", table: T_FOLDERS },
+      { op: "clearTable", table: T_SETTINGS },
+      { op: "clearTable", table: T_WORKSPACE },
+      { op: "clearBlobs" },
     ]);
   }
 

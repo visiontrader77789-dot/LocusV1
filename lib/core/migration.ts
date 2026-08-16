@@ -20,13 +20,16 @@ const MIGRATIONS: Array<(d: unknown) => unknown> = [
 
 export function migrateWorkspace(workspace: Workspace): Workspace {
   let current: Workspace = { ...workspace };
-  let v = current.schemaVersion ?? 0;
+  // Coerce schemaVersion read from disk: it may be a string, NaN, or missing.
+  const rawVersion = Number(current.schemaVersion);
+  let v = Number.isFinite(rawVersion) && rawVersion > 0 ? Math.floor(rawVersion) : 0;
   while (v < SCHEMA_VERSION) {
     const step = MIGRATIONS[v];
     if (!step) break;
     current = { ...(step(current) as Workspace), schemaVersion: v + 1 };
     v += 1;
   }
+  current.schemaVersion = SCHEMA_VERSION;
   return current;
 }
 
