@@ -79,4 +79,30 @@ describe("migrateWorkspace schemaVersion handling", () => {
     expect(migrated.schemaVersion).toBe(2);
     expect(migrated.name).toBe("WS");
   });
+
+  it("future schemaVersion (999) resolves to current without crash", () => {
+    const migrated = migrateWorkspace({ ...base, schemaVersion: 999 });
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.name).toBe("WS");
+  });
+
+  it("negative schemaVersion (-1) coerces to 0 then migrates", () => {
+    const migrated = migrateWorkspace({ ...base, schemaVersion: -1 });
+    expect(migrated.schemaVersion).toBe(2);
+  });
+
+  it("schemaVersion 3 (one ahead) resolves to current", () => {
+    const migrated = migrateWorkspace({ ...base, schemaVersion: 3 });
+    expect(migrated.schemaVersion).toBe(2);
+  });
+
+  it("Infinity schemaVersion coerces to 0 then migrates", () => {
+    const migrated = migrateWorkspace({ ...base, schemaVersion: Infinity });
+    expect(migrated.schemaVersion).toBe(2);
+  });
+
+  it("schemaVersion='garbage' coerces to 0 then migrates", () => {
+    const migrated = migrateWorkspace({ ...base, schemaVersion: "garbage" as unknown as number });
+    expect(migrated.schemaVersion).toBe(2);
+  });
 });

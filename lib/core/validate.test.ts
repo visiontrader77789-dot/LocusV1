@@ -110,4 +110,25 @@ describe("dedupeById", () => {
     expect(dedupeById(blocks)).toBe(1);
     expect(new Set(blocks.map((x) => x.id)).size).toBe(2);
   });
+
+  it("handles 50+ duplicate ids in one pass", () => {
+    const blocks = Array.from({ length: 60 }, () => {
+      return { id: "same", pageId: "p1", type: "paragraph" as const, content: "x", checked: false, indent: 0, rows: [], order: 0, createdAt: 0, updatedAt: 0 };
+    });
+    const reIded = dedupeById(blocks);
+    expect(reIded).toBe(59);
+    expect(new Set(blocks.map((b) => b.id)).size).toBe(60);
+  });
+
+  it("returns 0 for an empty array", () => {
+    expect(dedupeById([])).toBe(0);
+  });
+
+  it("returns 0 when all ids are already unique", () => {
+    const blocks = [
+      { id: "a", pageId: "p1", type: "paragraph" as const, content: "", checked: false, indent: 0, rows: [], order: 0, createdAt: 0, updatedAt: 0 },
+      { id: "b", pageId: "p1", type: "paragraph" as const, content: "", checked: false, indent: 0, rows: [], order: 0, createdAt: 0, updatedAt: 0 },
+    ];
+    expect(dedupeById(blocks)).toBe(0);
+  });
 });
