@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useApp } from "@/lib/store/app";
 import { navigate } from "@/lib/store/router";
 import { openPalette } from "@/lib/store/events";
@@ -8,17 +8,26 @@ import { relativeTime, isoDate, isOverdue } from "@/lib/core/util";
 import { EmptyState } from "@/components/primitives";
 import { LocusMark } from "@/components/mark";
 import { formatShortcut } from "@/lib/shortcuts/platform";
-import { IconFiles, IconPage, IconPlus, IconSearch, IconStar, IconTasks, IconUpload } from "@/components/icons";
+import { IconCheck, IconFiles, IconPage, IconPlus, IconSearch, IconStarFilled, IconTasks, IconUpload, IconX } from "@/components/icons";
 import { DashboardWidgets } from "@/components/widgets/grid";
 import { Cover } from "@/components/cover";
 
 export function Dashboard() {
   const { recentPages, favorites, tasks, files, createPage, createTask, addFiles, pushNotice } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [quickTask, setQuickTask] = useState(false);
+  const [quickTitle, setQuickTitle] = useState("");
 
   const openTasks = tasks.filter((t) => !t.completed).slice(0, 5);
   const dueToday = openTasks.filter((t) => t.dueDate === isoDate());
   const overdue = openTasks.filter((t) => t.dueDate && isOverdue(t.dueDate));
+
+  const commitQuickTask = () => {
+    const v = quickTitle.trim();
+    if (v) void createTask(v).then(() => pushNotice("success", "Task added"));
+    setQuickTitle("");
+    setQuickTask(false);
+  };
 
   const quickActions = [
     {
@@ -31,10 +40,7 @@ export function Dashboard() {
       label: "New task",
       icon: <IconTasks size={15} />,
       kbd: formatShortcut({ key: "n", mod: true, shift: true }),
-      run: () => {
-        const title = window.prompt("Task title");
-        if (title?.trim()) void createTask(title.trim()).then(() => pushNotice("success", "Task added"));
-      },
+      run: () => setQuickTask(!quickTask),
     },
     {
       label: "Search everything",
@@ -53,13 +59,15 @@ export function Dashboard() {
     <div className="max-w-[920px] mx-auto px-4 sm:px-6 pt-6 pb-16">
       <Cover />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-12">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
         {quickActions.map((qa) => (
           <button
             key={qa.label}
             type="button"
             onClick={qa.run}
-            className="panel flex flex-col items-start gap-2.5 px-4 py-4 text-left hover:border-line-strong hover:bg-surface-2 transition-colors"
+            className={`panel flex flex-col items-start gap-2.5 px-4 py-4 text-left hover:border-line-strong hover:bg-surface-2 transition-colors ${
+              qa.label === "New task" && quickTask ? "ring-2 ring-accent ring-offset-1 bg-surface-2" : ""
+            }`}
           >
             <span className="text-ink-3">{qa.icon}</span>
             <span className="text-[13px] font-medium">{qa.label}</span>
@@ -67,6 +75,41 @@ export function Dashboard() {
           </button>
         ))}
       </div>
+
+      {quickTask && (
+        <div className="panel px-3 py-2.5 mb-8 flex items-center gap-2 anim-pop">
+          <IconTasks size={14} className="text-ink-3 shrink-0" />
+          <input
+            autoFocus
+            value={quickTitle}
+            onChange={(e) => setQuickTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitQuickTask();
+              if (e.key === "Escape") { setQuickTitle(""); setQuickTask(false); }
+            }}
+            placeholder="Task title…"
+            aria-label="New task title"
+            className="flex-1 bg-transparent outline-none text-[13.5px] placeholder:text-ink-3"
+          />
+          <button
+            type="button"
+            aria-label="Add task"
+            onClick={commitQuickTask}
+            disabled={!quickTitle.trim()}
+            className="icon-btn !w-7 !h-7 disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <IconCheck size={15} />
+          </button>
+          <button
+            type="button"
+            aria-label="Cancel"
+            onClick={() => { setQuickTitle(""); setQuickTask(false); }}
+            className="icon-btn !w-7 !h-7"
+          >
+            <IconX size={15} />
+          </button>
+        </div>
+      )}
 
       <DashboardWidgets />
 
@@ -228,5 +271,5 @@ export function Dashboard() {
 }
 
 function IconStarFilledSmall() {
-  return <IconStar size={12} className="text-warn shrink-0" />;
+  return <IconStarFilled size={12} className="text-warn shrink-0" />;
 }

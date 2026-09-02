@@ -30,7 +30,7 @@ function MobileNav({ route }: { route: Route }) {
         <button
           type="button"
           aria-label="New page"
-          className="flex flex-col items-center justify-center gap-0.5 flex-1 text-accent"
+          className="flex flex-col items-center justify-center gap-0.5 flex-1 text-accent active:opacity-60 transition-opacity"
           onClick={() => void createPage(null).then((p) => navigate({ name: "page", id: p.id }))}
         >
           <IconPlus size={18} />
@@ -42,8 +42,9 @@ function MobileNav({ route }: { route: Route }) {
             type="button"
             onClick={item.go}
             aria-label={item.label}
-            className={`flex flex-col items-center justify-center gap-0.5 flex-1 ${
-              route.name === item.key ? "text-accent" : "text-ink-3"
+            aria-current={route.name === item.key ? "page" : undefined}
+            className={`flex flex-col items-center justify-center gap-0.5 flex-1 transition-colors active:opacity-60 ${
+              route.name === item.key ? "text-accent" : "text-ink-3 hover:text-ink-2"
             }`}
           >
             <item.icon size={18} />

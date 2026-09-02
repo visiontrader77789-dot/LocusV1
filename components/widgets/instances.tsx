@@ -7,7 +7,7 @@ import { useApp } from "@/lib/store/app";
 import { navigate } from "@/lib/store/router";
 import { openPalette } from "@/lib/store/events";
 import {
-  IconCalendar, IconChart, IconClock, IconHourglass, IconNoteSticky, IconPage,
+  IconCalendar, IconChart, IconCheck, IconClock, IconHourglass, IconNoteSticky, IconPage,
   IconPen, IconPlay, IconPlus, IconQuote, IconSearch, IconStar, IconTasks, IconUpload, IconX,
 } from "@/components/icons";
 
@@ -197,7 +197,7 @@ export function QuickNoteWidget({ instance, setData }: WidgetProps) {
 
 // ---- today's tasks ---------------------------------------------------------
 export function TodayTasksWidget(_props: WidgetProps) {
-  const { tasks } = useApp();
+  const { tasks, updateTask } = useApp();
   const today = isoDate();
   const open = tasks.filter((t) => !t.completed);
   const dueToday = open.filter((t) => t.dueDate === today).slice(0, 5);
@@ -220,8 +220,13 @@ export function TodayTasksWidget(_props: WidgetProps) {
       ) : (
         <ul className="space-y-1">
           {dueToday.map((t) => (
-            <li key={t.id} className="flex items-center gap-2 text-[13px]">
-              <span className="w-3.5 h-3.5 shrink-0 rounded-[4px] border border-line-strong" />
+            <li key={t.id} className="flex items-center gap-2 text-[13px] group">
+              <button
+                type="button"
+                aria-label={`Mark "${t.title}" done`}
+                onClick={() => void updateTask(t.id, { completed: true })}
+                className="w-3.5 h-3.5 shrink-0 rounded-[4px] border border-line-strong hover:border-accent hover:bg-accent-soft transition-colors"
+              />
               <span className="flex-1 min-w-0 truncate">{t.title}</span>
             </li>
           ))}
@@ -459,12 +464,19 @@ export function QuoteWidget({ instance, setData }: WidgetProps) {
 // ---- quick actions ---------------------------------------------------------
 export function QuickActionsWidget(_props: WidgetProps) {
   const { createPage, createTask, addFiles, pushNotice } = useApp();
+  const [taskDraft, setTaskDraft] = useState("");
+  const [addingTask, setAddingTask] = useState(false);
+
+  const commitTask = () => {
+    const v = taskDraft.trim();
+    if (v) void createTask(v).then(() => pushNotice("success", "Task added"));
+    setTaskDraft("");
+    setAddingTask(false);
+  };
+
   const actions = [
     { label: "New page", icon: <IconPage size={14} />, run: () => void createPage(null).then((p) => navigate({ name: "page", id: p.id })) },
-    { label: "New task", icon: <IconTasks size={14} />, run: () => {
-      const title = window.prompt("Task title");
-      if (title?.trim()) void createTask(title.trim()).then(() => pushNotice("success", "Task added"));
-    } },
+    { label: "New task", icon: <IconTasks size={14} />, run: () => setAddingTask((a) => !a) },
     { label: "Search", icon: <IconSearch size={14} />, run: () => openPalette() },
     { label: "Upload", icon: <IconUpload size={14} />, run: () => {
       const input = document.createElement("input");
@@ -486,13 +498,40 @@ export function QuickActionsWidget(_props: WidgetProps) {
             key={a.label}
             type="button"
             onClick={a.run}
-            className="flex items-center gap-2 px-2.5 py-2 rounded-[8px] border border-line text-[12.5px] font-medium text-ink hover:bg-surface-2 hover:border-line-strong transition-colors"
+            className={`flex items-center gap-2 px-2.5 py-2 rounded-[8px] border border-line text-[12.5px] font-medium text-ink hover:bg-surface-2 hover:border-line-strong transition-colors ${
+              a.label === "New task" && addingTask ? "border-accent bg-surface-2" : ""
+            }`}
           >
             <span className="text-ink-3">{a.icon}</span>
             {a.label}
           </button>
         ))}
       </div>
+      {addingTask && (
+        <div className="mt-2 flex items-center gap-1.5 anim-pop">
+          <input
+            autoFocus
+            value={taskDraft}
+            onChange={(e) => setTaskDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitTask();
+              if (e.key === "Escape") { setTaskDraft(""); setAddingTask(false); }
+            }}
+            placeholder="Task title…"
+            aria-label="New task title"
+            className="text-input !h-7 !text-[12.5px] !py-0"
+          />
+          <button
+            type="button"
+            aria-label="Add task"
+            disabled={!taskDraft.trim()}
+            onClick={commitTask}
+            className="icon-btn !w-7 !h-7 disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <IconCheck size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

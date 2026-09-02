@@ -838,7 +838,7 @@ export function Sidebar({
                 navigate(item.route);
                 onNavigate?.();
               }}
-              className={`flex items-center gap-2.5 h-8 px-2.5 rounded-[6px] text-[13px] transition-colors ${
+              className={`flex items-center gap-2.5 h-8 px-2.5 rounded-[6px] text-[13px] transition-colors active:scale-[0.99] ${
                 isActive
                   ? "bg-accent-soft text-accent font-medium"
                   : "text-ink-2 hover:bg-surface-2 hover:text-ink"

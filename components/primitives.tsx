@@ -23,7 +23,7 @@ export function Button({
   title?: string;
 }) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 font-medium rounded-[6px] transition-colors duration-120 select-none disabled:opacity-45 disabled:pointer-events-none whitespace-nowrap";
+    "inline-flex items-center justify-center gap-1.5 font-medium rounded-[6px] transition-colors duration-120 select-none disabled:opacity-45 disabled:pointer-events-none whitespace-nowrap active:scale-[0.98]";
   const sizes = {
     sm: "h-7 px-2.5 text-[12.5px]",
     md: "h-8 px-3.5 text-[13px]",
@@ -31,7 +31,7 @@ export function Button({
   };
   const variants = {
     primary: "bg-accent text-accent-ink hover:bg-accent-hi shadow-[var(--shadow-1)]",
-    secondary: "bg-surface text-ink border border-line-strong hover:bg-surface-2",
+    secondary: "bg-surface text-ink border border-line-strong hover:bg-surface-2 hover:border-ink-3",
     ghost: "text-ink-2 hover:bg-surface-2 hover:text-ink",
     danger: "bg-danger text-white hover:opacity-90 shadow-[var(--shadow-1)]",
   };
