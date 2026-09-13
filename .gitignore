@@ -5,14 +5,23 @@
 /.next/
 /out/
 
-# misc
-.DS_Store
-*.pem
-npm-debug.log*
-
 # env
 .env*
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# logs
+*.log
+
+# internal dev reports / QA artifacts
+/QA-REPORT.md
+
+# test coverage
+/coverage
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db

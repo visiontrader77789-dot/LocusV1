@@ -1,8 +1,7 @@
 # LOCUS — Storage System 2.0 Engineering Report
 
-Scope: hardening the local-only storage layer of Locus. Companion to the earlier
-editor stress-test report (`QA-REPORT.md`). All work is client-side and stays
-local-first: no accounts, no cloud, no AI, no backend.
+Scope: hardening the local-only storage layer of Locus. All work is client-side
+and stays local-first: no accounts, no cloud, no AI, no backend.
 
 ---
 
